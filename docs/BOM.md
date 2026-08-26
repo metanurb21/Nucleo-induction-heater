@@ -80,6 +80,15 @@ Galvanically isolated signal path between controller and power stage.
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | NTC thermistor | |
 | 1 | Pin header male | 8-pin 2.54mm | Through-hole | TFT module connector | |
 
+## Frequency Feedback Signal Conditioning (power-side, before Si8621 #2)
+
+| Qty | Part | Value/Type | Package | Purpose | Notes |
+|-----|------|-----------|---------|---------|-------|
+| 1 | 74HC14 | Schmitt trigger inverter | DIP-14 | Convert CT sine to clean square wave | Only 1 of 6 gates used |
+| 1 | Resistor | 10kΩ 1/4W | Through-hole | Voltage divider upper (CT → HC14 input) | |
+| 1 | Resistor | 15kΩ 1/4W | Through-hole | Voltage divider lower (HC14 input → GND) | |
+| 1 | Capacitor | 100nF ceramic | Through-hole | 74HC14 VCC decoupling | Close to pin 14 |
+
 ## Gate Driver Section (15V rail, power-side GND)
 
 | Qty | Part | Value/Type | Package | Purpose | Notes |

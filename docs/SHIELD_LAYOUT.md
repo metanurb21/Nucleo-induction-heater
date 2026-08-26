@@ -18,10 +18,11 @@ graph LR
 
 ```mermaid
 graph RL
-    OCP["OCP Comparator<br/>Screw Terminal"] -->|"3.3V Zener"| ISO2A["Si8621 #2<br/>Ch A"]
-    FREQ["Tank Feedback<br/>Screw Terminal"] -->|"3.3V Zener"| ISO2B["Si8621 #2<br/>Ch B"]
-    ISO2A -->|"1kΩ + Schottky"| PB12["PB12<br/>TIM1_BKIN"]
-    ISO2B -->|"1kΩ + Schottky"| PA0["PA0<br/>TIM2_CH1"]
+    OCP["OCP Comparator<br/>Screw Terminal"] -->|"3.3V Zener"| ISO2A["Si8621 #2<br/>Pin 7 B1"]
+    CT["CT Burden<br/>100Ω"] -->|"10k/15k divider"| HC14["74HC14<br/>Pin 1→2"]
+    HC14 --> ISO2B["Si8621 #2<br/>Pin 6 B2"]
+    ISO2A["Si8621 #2<br/>Pin 2 A1"] -->|"1kΩ + Schottky"| PB12["PB12<br/>TIM1_BKIN"]
+    ISO2B["Si8621 #2<br/>Pin 3 A2"] -->|"1kΩ + Schottky"| PA0["PA0<br/>TIM2_CH1"]
 ```
 
 ## Analog Sensing
@@ -192,6 +193,33 @@ block-beta
 
 *Both IXDN604 are non-inverting. Complementary signals + dead-time handled by STM32 TIM1.*
 *10kΩ pulldown on each input ensures gates stay OFF if signal cable disconnects.*
+
+### 74HC14 Schmitt Trigger — Frequency Feedback Conditioner
+
+```
+              ┌──────────────┐
+         1A 1 ┤              ├ 14  VCC (5V power-side)
+         1Y 2 ┤              ├ 13  6A
+         2A 3 ┤              ├ 12  6Y
+         2Y 4 ┤   74HC14    ├ 11  5A
+         3A 5 ┤              ├ 10  5Y
+         3Y 6 ┤              ├  9  4A
+       GND  7 ┤              ├  8  4Y
+              └──────────────┘
+```
+
+**Only Gate 1 used (pins 1, 2):**
+
+| Pin | Connection |
+|-----|-----------|
+| 1 (1A input) | Junction of 10kΩ/15kΩ voltage divider from CT burden |
+| 2 (1Y output) | Si8621 #2 pin 6 (B2) — frequency feedback to Nucleo |
+| 7 (GND) | Power-side GND |
+| 14 (VCC) | 5V power-side rail + 100nF decoupling |
+| 3,5,9,11,13 | Unused inputs tied to GND or VCC (prevent floating/oscillation) |
+
+*Note: 74HC14 is inverting — output is inverted relative to input.*
+*This doesn't affect the PLL since it measures frequency/period, not polarity.*
 
 ### Power Rails on Combined PCB
 
