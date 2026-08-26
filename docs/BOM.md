@@ -72,12 +72,22 @@ Galvanically isolated signal path between controller and power stage.
 | Qty | Part | Value/Type | Package | Purpose | Notes |
 |-----|------|-----------|---------|---------|-------|
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | 5V power input | |
-| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | PWM_A output (to gate driver) | |
-| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | PWM_B output (to gate driver) | |
+| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | 15V power input | Gate drive supply |
+| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | GDT output leg A | To GDT primary |
+| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | GDT output leg B | To GDT primary |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | FAULT input (from OCP comparator) | |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | FREQ feedback input | |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | NTC thermistor | |
 | 1 | Pin header male | 8-pin 2.54mm | Through-hole | TFT module connector | |
+
+## Gate Driver Section (15V rail, power-side GND)
+
+| Qty | Part | Value/Type | Package | Purpose | Notes |
+|-----|------|-----------|---------|---------|-------|
+| 2 | IXDN604 | IXDN604PI | TO-220-5 | Non-inverting gate driver (9A peak) | Both same type, no IXDI needed |
+| 2 | Capacitor | 100nF ceramic | Through-hole | IXDN VCC decoupling (close to pin 1) | |
+| 2 | Capacitor | 10µF electrolytic | Through-hole | IXDN VCC bulk (near each chip) | 25V rated |
+| 2 | Resistor | 10kΩ 1/4W | Through-hole | Pulldown on IXDN IN (pin 4) | Keeps gates OFF if signal absent |
 
 ## Prototype Board
 
