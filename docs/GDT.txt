@@ -1,0 +1,23 @@
+Ferrite Toroid Core 5000-1
+Introduction
+Our Ferrite Core 5000-1 is specifically designed for use as
+gate transformers with high power CM300 and CM600 (or
+similar) IGBT based DRSSTCs. A single 5000-1 core can be
+used to drive an entire full-bridge based of (4) CM600 IGBT
+modules. They can also be used as high current pulse
+transformers.
+Typical Applications:
+• Gate transformers for high power DRSSTCs
+• Current transformers (1000A+)
+• Half-bridge and full-bridges
+• Solid state Tesla Coils (SSTCs)
+• CM300 / CM600 IGBT gate transformers
+Physical Dimensions
+Electrical Properties
+AL(nH) 6845 ± 20%
+Ae(mm2
+) 157.4
+∑l/A(cm-1) 10.00
+le(mm) 144.6
+Ve(mm3
+) 22774

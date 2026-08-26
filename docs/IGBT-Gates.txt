@@ -1,0 +1,2 @@
+The gates of the IGBT modules are connected to the GDT secondaries via parallel 5W resistors and 5W 1N5821 shottky reverse diodes to provide enough delay to prevent the gates from being turned on too early and prevent shoot-through on one side of the full bridge.
+In my case, gate resistors rated at 3.3 Ohm gave the best looking square wave gate signal on the SKM bricks. This may not be the same now, but if it's smoothing the switching signal too much, we can adjust.
