@@ -1,97 +1,76 @@
 # Shield PCB Layout — Signal Flow & Connections
 
-## System Block Diagram
+## PWM Output Path (Nucleo → Gate Drivers)
+
+```mermaid
+graph LR
+    PA8["PA8<br/>TIM1_CH1"] -->|"100Ω"| ISO1A["Si8621 #1<br/>Ch A"]
+    PB13["PB13<br/>TIM1_CH1N"] -->|"100Ω"| ISO1B["Si8621 #1<br/>Ch B"]
+    ISO1A -->|"3.3V Zener"| T1["PWM_A<br/>Screw Terminal"]
+    ISO1B -->|"3.3V Zener"| T2["PWM_B<br/>Screw Terminal"]
+    T1 --> GD["To Gate<br/>Drivers"]
+    T2 --> GD
+```
+
+## Fault & Feedback Input Path (Power Stage → Nucleo)
+
+```mermaid
+graph RL
+    OCP["OCP Comparator<br/>Screw Terminal"] -->|"3.3V Zener"| ISO2A["Si8621 #2<br/>Ch A"]
+    FREQ["Tank Feedback<br/>Screw Terminal"] -->|"3.3V Zener"| ISO2B["Si8621 #2<br/>Ch B"]
+    ISO2A -->|"1kΩ + Schottky"| PB12["PB12<br/>TIM1_BKIN"]
+    ISO2B -->|"1kΩ + Schottky"| PA0["PA0<br/>TIM2_CH1"]
+```
+
+## Analog Sensing
+
+```mermaid
+graph LR
+    NTC_C["NTC Connector"] --> NTC["10kΩ NTC"]
+    NTC -->|"10kΩ divider"| F1["10nF filter"]
+    F1 --> PC0["PC0<br/>ADC1_IN10"]
+
+    VBUS["Bus Voltage"] -->|"R1/R2 divider"| F2["10nF filter"]
+    F2 --> PA1["PA1<br/>ADC1_IN1"]
+```
+
+## User Interface
+
+```mermaid
+graph LR
+    subgraph Display
+        PA5["PA5 SCK"] --> TFT["ST7735S<br/>TFT"]
+        PA7["PA7 MOSI"] --> TFT
+        PB6["PB6 CS"] --> TFT
+        PC7["PC7 DC"] --> TFT
+        PA9["PA9 RST"] --> TFT
+    end
+
+    subgraph Controls
+        ENC["EC11<br/>Encoder"] --> PB4["PB4 ENC_A"]
+        ENC --> PB5["PB5 ENC_B"]
+        ENC --> PC13["PC13 BTN"]
+    end
+
+    subgraph Indicators
+        PB0["PB0"] -->|"330Ω"| G["Green LED"]
+        PB1["PB1"] -->|"330Ω"| R["Red LED"]
+    end
+```
+
+## Power Distribution
 
 ```mermaid
 graph TD
-    subgraph NUCLEO["Nucleo F446RE (center of perfboard)"]
-        PA8["PA8 — TIM1_CH1<br/>PWM_A"]
-        PB13["PB13 — TIM1_CH1N<br/>PWM_B"]
-        PB12["PB12 — TIM1_BKIN<br/>FAULT IN"]
-        PA0["PA0 — TIM2_CH1<br/>FREQ Feedback"]
-        PA1["PA1 — ADC1_IN1<br/>OCP Sense"]
-        PC0["PC0 — ADC1_IN10<br/>NTC Temp"]
-        PA5_SPI["PA5 — SPI1_SCK"]
-        PA7_SPI["PA7 — SPI1_MOSI"]
-        PB6["PB6 — TFT CS"]
-        PC7["PC7 — TFT DC"]
-        PA9["PA9 — TFT RST"]
-        PB4["PB4 — TIM3_CH1<br/>ENC A"]
-        PB5["PB5 — TIM3_CH2<br/>ENC B"]
-        PC13["PC13 — ENC Button"]
-        PB0["PB0 — Status LED"]
-        PB1["PB1 — Fault LED"]
-        VIN["VIN — 5V Input"]
-        V33["3.3V Output"]
-    end
+    PWR["5V Input<br/>Screw Terminal"] --> C1["100µF bulk"]
+    C1 --> VIN["Nucleo VIN"]
+    C1 --> ISO_VDD2["Si8621 Vdd2<br/>(both chips)"]
+    VIN --> V33["Nucleo 3.3V out"]
+    V33 --> ISO_VDD1["Si8621 Vdd1<br/>(both chips)"]
+    V33 --> PULLUPS["Pull-ups<br/>+ ADC ref"]
 
-    subgraph ISO1["Si8621 #1 — Output Isolation"]
-        ISO1_A["CH_A: PWM_A"]
-        ISO1_B["CH_B: PWM_B"]
-    end
-
-    subgraph ISO2["Si8621 #2 — Input Isolation"]
-        ISO2_A["CH_A: FAULT"]
-        ISO2_B["CH_B: FREQ"]
-    end
-
-    subgraph UI["User Interface"]
-        TFT["1.8 ST7735S TFT"]
-        ENC["EC11 Rotary Encoder"]
-        BTN["Start/Stop Button"]
-        LED_G["Green LED — Status"]
-        LED_R["Red LED — Fault"]
-    end
-
-    subgraph ANALOG["Analog Inputs"]
-        NTC["NTC 10k Thermistor"]
-        VDIV["Bus Voltage Divider"]
-    end
-
-    subgraph CONNECTORS["Screw Terminals — To Power Stage"]
-        PWM_A_OUT["PWM_A → Gate Driver"]
-        PWM_B_OUT["PWM_B → Gate Driver"]
-        FAULT_IN["FAULT ← OCP Comparator"]
-        FREQ_IN["FREQ ← Tank Feedback"]
-        POWER["5V Supply Input"]
-        NTC_CONN["NTC Connector"]
-    end
-
-    %% Output path
-    PA8 -->|"100Ω"| ISO1_A
-    PB13 -->|"100Ω"| ISO1_B
-    ISO1_A -->|"3.3V TVS"| PWM_A_OUT
-    ISO1_B -->|"3.3V TVS"| PWM_B_OUT
-
-    %% Input path
-    FAULT_IN -->|"3.3V TVS"| ISO2_A
-    FREQ_IN -->|"3.3V TVS"| ISO2_B
-    ISO2_A -->|"1kΩ + Schottky"| PB12
-    ISO2_B -->|"1kΩ + Schottky"| PA0
-
-    %% Analog
-    NTC_CONN --- NTC
-    NTC -->|"10kΩ divider + 10nF"| PC0
-    VDIV -->|"R divider + 10nF"| PA1
-
-    %% UI
-    PA5_SPI --> TFT
-    PA7_SPI --> TFT
-    PB6 --> TFT
-    PC7 --> TFT
-    PA9 --> TFT
-    PB4 --> ENC
-    PB5 --> ENC
-    PC13 --> ENC
-    PB0 -->|"330Ω"| LED_G
-    PB1 -->|"330Ω"| LED_R
-
-    %% Power
-    POWER --> VIN
-    V33 -->|"Vdd1"| ISO1
-    V33 -->|"Vdd1"| ISO2
-    POWER -->|"Vdd2"| ISO1
-    POWER -->|"Vdd2"| ISO2
+    C1 -.->|"100nF"| ISO_VDD2
+    V33 -.->|"100nF"| ISO_VDD1
 ```
 
 ## Physical Layout (Top View — Perfboard)
