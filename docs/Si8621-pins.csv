@@ -1,0 +1,11 @@
+,,,,,
+,Name,"SOIC-8 Pin#
+Si862x",Type,Description,
+,VDDI/NCT,1,Supply,Side 1 power supply.,
+,GND1,4,Ground,Side 1 ground.,
+,A1,2,Digital 1/0,Side 1 digital input or output.,
+,A2,3,Digital 1/0,Side 1 digital input or output.,
+,B1,7,Digital 1/0,Side 2 digital input or output.,
+,B2,6,Digital 1/0,Side 2 digital input or output.,
+,VDD2,8,Supply,Side 2 power supply.,
+,GND2/NC1,5,Ground,Side 2 ground.,

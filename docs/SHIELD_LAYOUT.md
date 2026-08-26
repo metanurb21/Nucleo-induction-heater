@@ -110,14 +110,48 @@ block-beta
 - 100µF bulk cap near 5V input terminal
 
 ### Si8621 Pinout (SOIC-8)
+
 ```
-        ┌───────┐
-  Vdd1 ─┤1     8├─ Vdd2
-  GND1 ─┤2     7├─ GND2
-  IN_A ─┤3     6├─ OUT_A
-  IN_B ─┤4     5├─ OUT_B
-        └───────┘
+              ┌──────────┐
+  VDD1/NCT  1 ┤          ├ 8  VDD2
+    A1 (I/O) 2 ┤ Si8621BB ├ 7  B1 (I/O)
+    A2 (I/O) 3 ┤          ├ 6  B2 (I/O)
+       GND1  4 ┤          ├ 5  GND2/NC1
+              └──────────┘
+
+  Side 1 (pins 1-4):  Logic side — Nucleo 3.3V
+  Side 2 (pins 5-8):  Power side — 5V from driver rail
+
+  Channel A: A1 (pin 2) ↔ B1 (pin 7)
+  Channel B: A2 (pin 3) ↔ B2 (pin 6)
 ```
-- Pins 1-4: Logic side (Nucleo 3.3V)
-- Pins 5-8: Power side (5V from driver rail)
-- For input isolation (Si8621 #2): flip direction — signal enters on pin 6/5, exits on pin 3/4
+
+### Si8621 #1 — OUTPUT Isolation (Nucleo → Gate Drivers)
+
+| Pin | Name | Connection |
+|-----|------|-----------|
+| 1 | VDD1 | Nucleo 3.3V + 100nF cap to GND1 |
+| 2 | A1 | PA8 (TIM1_CH1) via 100Ω series resistor |
+| 3 | A2 | PB13 (TIM1_CH1N) via 100Ω series resistor |
+| 4 | GND1 | Nucleo GND (logic ground) |
+| 5 | GND2 | Power stage GND (isolated) |
+| 6 | B2 | PWM_B screw terminal (+ 3.3V zener to GND2) |
+| 7 | B1 | PWM_A screw terminal (+ 3.3V zener to GND2) |
+| 8 | VDD2 | 5V driver rail + 100nF cap to GND2 |
+
+*Signal flows: A1→B1 (PWM_A), A2→B2 (PWM_B)*
+
+### Si8621 #2 — INPUT Isolation (Power Stage → Nucleo)
+
+| Pin | Name | Connection |
+|-----|------|-----------|
+| 1 | VDD1 | Nucleo 3.3V + 100nF cap to GND1 |
+| 2 | A1 | PB12 (TIM1_BKIN) via 1kΩ + schottky to 3.3V |
+| 3 | A2 | PA0 (TIM2_CH1) via 1kΩ + schottky to 3.3V |
+| 4 | GND1 | Nucleo GND (logic ground) |
+| 5 | GND2 | Power stage GND (isolated) |
+| 6 | B2 | FREQ feedback screw terminal (+ 3.3V zener to GND2) |
+| 7 | B1 | FAULT input screw terminal (+ 3.3V zener to GND2) |
+| 8 | VDD2 | 5V driver rail + 100nF cap to GND2 |
+
+*Signal flows: B1→A1 (FAULT), B2→A2 (FREQ feedback)*
