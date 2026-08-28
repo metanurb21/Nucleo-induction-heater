@@ -1,0 +1,21 @@
+Digital PLL Induction Heater Controller — STM32 Nucleo F446RE
+
+Replacing the analog self-oscillating feedback (DeCosta board) with a digital phase-locked loop for the induction heater. The STM32F446RE's advanced timer (TIM1) generates complementary PWM with hardware-configurable dead-time down to ~6ns resolution — no analog timing components, no IXDI inverter chip, no Schmitt trigger delay networks. Just clean digital signals with nanosecond-precise dead-time that can't drift.
+
+The signal chain: STM32 TIM1 → Si8621 digital isolator → IXDN604 gate drivers → GDT (EVR 5000-1 core) → 3.3Ω gate resistors + Schottky diodes → SKM400GB IGBT full bridge
+
+PLL feedback loop: Work coil CT (40:1) → 100Ω burden → 74HC14 Schmitt trigger → Si8621 isolator → STM32 TIM2 input capture. The MCU measures the actual tank resonant frequency in real-time and adjusts PWM frequency to track resonance — or intentionally detunes off-resonance for a "power mode" override to maximize coupling into the workpiece.
+
+Protection:
+
+Hardware break input (TIM1 BKIN) — OCP kills the PWM outputs in one clock cycle (~6ns), no software latency
+NTC on IGBT heatsink — auto-shutdown at 80°C
+Full galvanic isolation between logic and power stage
+10kΩ pulldowns on gate driver inputs — if the controller disconnects, all gates go OFF
+Why it's better than the old approach:
+
+Dead-time adjustable in firmware via rotary encoder — dial it to the edge without resoldering components
+Digital frequency tracking means auto-resonance as workpiece heats through curie point
+Observable — TFT displays real-time frequency, temperature, current, and run timer
+Reproducible — settings are numbers in code, not component tolerances
+Target: 240V 50A input, 50-100kHz operating range, melting copper.
