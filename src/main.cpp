@@ -1,77 +1,77 @@
 // ============================================================
-//  Nucleo F446RE — Phase 1: Hello World
-//  Verify: toolchain, upload, serial, onboard LED
-//  
-//  The Nucleo F446RE has:
-//    - User LED (green) on PA5 (Arduino pin D13 / LED_BUILTIN)
-//    - User button (blue) on PC13 (active LOW, no external pull-up needed)
-//    - Serial over ST-Link USB (Serial object, no extra wiring)
+//  Induction Heater PLL Controller — STM32 Nucleo F446RE
+//  Main orchestrator (thin — all logic lives in modules).
 //
-//  Plug in USB, upload, open serial monitor at 115200.
+//  Modules:
+//    config.h       — pins, thresholds, tunables (single source)
+//    PwmDrive       — TIM1 complementary PWM + dead-time + BKIN
+//    PllControl     — TIM2 capture, resonance tracking, detune
+//    Protection     — OCP + temperature fault detection
+//    Sensing        — ADC acquisition + conversion + smoothing
+//    MainsControl   — contactor relay + zero-cross switching
+//    Encoder        — TIM3 quadrature + button
+//    Display        — ST7735 TFT UI
+//    StateManager   — the brain: state machine + sequencing
+//
+//  See docs/FIRMWARE.md for architecture and the phased
+//  bring-up plan. Scaffold — validate on the AD3 before
+//  connecting any power stage.
+//
+//  SAFETY: Boots with contactor OFF and PWM outputs disabled.
+//  Nothing switches until StateManager runs the guarded startup.
 // ============================================================
 
 #include <Arduino.h>
-
-#define USER_LED LED_BUILTIN  // PA5 — green LED
-#define USER_BTN PC13         // Blue button — active LOW
-
-unsigned long lastBlink = 0;
-unsigned long lastReport = 0;
-bool ledState = false;
-int blinkInterval = 500;  // ms
+#include "config.h"
+#include "PwmDrive.h"
+#include "PllControl.h"
+#include "Protection.h"
+#include "Sensing.h"
+#include "MainsControl.h"
+#include "Encoder.h"
+#include "Display.h"
+#include "StateManager.h"
 
 void setup()
 {
     Serial.begin(115200);
-    delay(1000);  // Give serial monitor time to connect
+    delay(200);
+    Serial.println("=====================================");
+    Serial.println(" Induction Heater PLL — F446RE");
+    Serial.printf( " Core: %lu MHz\n", SystemCoreClock / 1000000UL);
+    Serial.println("=====================================");
 
-    pinMode(USER_LED, OUTPUT);
-    pinMode(USER_BTN, INPUT);  // Has internal pull-up on Nucleo
+    // ---- Safety-critical outputs FIRST ----
+    // Contactor off, PWM disabled before anything else initializes.
+    pinMode(PIN_LED_STATUS, OUTPUT);
+    pinMode(PIN_LED_FAULT, OUTPUT);
+    digitalWrite(PIN_LED_STATUS, LOW);
+    digitalWrite(PIN_LED_FAULT, LOW);
 
-    Serial.println("=================================");
-    Serial.println(" Nucleo F446RE — Alive!");
-    Serial.println(" Induction Heater PLL Controller");
-    Serial.println(" Phase 1: Hardware Verification");
-    Serial.println("=================================");
-    Serial.println();
-    Serial.printf("CPU Clock: %lu MHz\n", SystemCoreClock / 1000000UL);
-    Serial.printf("LED pin: PA5 (LED_BUILTIN)\n");
-    Serial.printf("Button pin: PC13 (USER_BTN)\n");
-    Serial.println();
-    Serial.println("LED blinking at 1Hz. Press blue button to toggle fast/slow.");
-    Serial.println("If you see this, toolchain + upload + serial all working.");
+    MainsControl::init();   // contactor forced OFF
+    PwmDrive::init();       // TIM1 configured, outputs DISABLED (MOE=0)
+
+    // ---- Sensing + protection ----
+    Sensing::init();
+    Protection::init();
+
+    // ---- PLL feedback capture ----
+    PllControl::init();
+
+    // ---- User interface ----
+    Encoder::init();
+    Display::init();
+    Display::splash();
+    delay(SPLASH_MS);
+
+    // ---- State machine ----
+    StateManager::init();
+
+    Serial.println("Ready. Idle. Press encoder to START.");
 }
 
 void loop()
 {
-    unsigned long now = millis();
-
-    // Blink the LED
-    if (now - lastBlink >= (unsigned long)blinkInterval)
-    {
-        lastBlink = now;
-        ledState = !ledState;
-        digitalWrite(USER_LED, ledState);
-    }
-
-    // Check button (active LOW, no debounce needed for this test)
-    if (digitalRead(USER_BTN) == LOW)
-    {
-        blinkInterval = 100;  // Fast blink while held
-    }
-    else
-    {
-        blinkInterval = 500;  // Normal blink
-    }
-
-    // Periodic serial report (every 2 seconds)
-    if (now - lastReport >= 2000)
-    {
-        lastReport = now;
-        Serial.printf("[%6lu ms] LED=%s  BTN=%s  Blink=%dms\n",
-                      now,
-                      ledState ? "ON " : "OFF",
-                      digitalRead(USER_BTN) == LOW ? "PRESSED" : "released",
-                      blinkInterval);
-    }
+    // Everything is timing-managed inside StateManager::update().
+    StateManager::update();
 }
