@@ -1,5 +1,9 @@
 # Shield PCB Layout — Signal Flow & Connections
 
+> Related docs: `JST_CONNECTORS.md` (inter-board wiring + colors),
+> `NUCLEO_PINOUT.md` (pin map), `MAINS_CONTROL.md` (contactor safety),
+> `BOM.md` (parts). Build is two stacked perfs joined by two 8-pin JST.
+
 ## PWM Output Path (Nucleo → Isolator → Gate Drivers → GDT)
 
 ```mermaid
@@ -63,34 +67,69 @@ graph LR
 
 ## Power Distribution
 
+The lower board is fed by a 12V wallwart. An adjustable step-down board makes
+the 5V rail. The Nucleo runs from **12V on VIN** (its onboard regulator needs
+7–12V — 5V is NOT enough), and the Nucleo's own 3.3V output powers the isolator
+logic side. See `JST_CONNECTORS.md` for which rails cross between the boards.
+
 ```mermaid
 graph TD
-    PWR["5V Input<br/>Screw Terminal"] --> C1["100µF bulk"]
-    C1 --> VIN["Nucleo VIN"]
-    C1 --> ISO_VDD2["Si8621 Vdd2<br/>(both chips)"]
+    WALL["12V Wallwart"] --> R12["12V RAIL"]
+    R12 --> STEP["5V Step-down board"]
+    R12 -->|"JST Conn1 Red → VIN"| VIN["Nucleo VIN (7-12V)"]
+    STEP --> R5["5V RAIL"]
     VIN --> V33["Nucleo 3.3V out"]
-    V33 --> ISO_VDD1["Si8621 Vdd1<br/>(both chips)"]
-    V33 --> PULLUPS["Pull-ups<br/>+ ADC ref"]
 
-    C1 -.->|"100nF"| ISO_VDD2
-    V33 -.->|"100nF"| ISO_VDD1
+    R5 --> ISO_VDD2["Si8621 Vdd2 (both chips)"]
+    R5 --> HC14V["74HC14 VCC"]
+    R5 --> RELAY["Relay coil (contactor opto)"]
+
+    V33 -->|"JST Conn1 Blue → lower"| ISO_VDD1["Si8621 Vdd1 (logic side)"]
+    V33 --> PULLUPS["Pull-ups + ADC ref"]
+
+    R5 -.->|"100nF each"| ISO_VDD2
+    V33 -.->|"100nF each"| ISO_VDD1
 ```
 
-## Physical Layout (Top View — Perfboard)
+**Rail summary:**
+
+| Rail | Source | Powers |
+|------|--------|--------|
+| 12V | Wallwart | Nucleo VIN (via JST Conn1 Red), 5V step-down input |
+| 5V | Step-down from 12V | Si8621 Vdd2, 74HC14, relay coil |
+| 3.3V | Nucleo onboard regulator | Si8621 Vdd1 (logic side), pull-ups, ADC ref (crosses down via JST Conn1 Blue) |
+| 15V | Separate supply | IXDN604 VCC (gate drive) |
+
+## Physical Layout (Stacked Perfboards)
+
+Two stacked perfboards joined by two 8-pin JST connectors (see
+`JST_CONNECTORS.md`). Nucleo on the TOP perf (header-pin solder only, easy to
+lift for access). Driver/isolation/IXDN on the LOWER perf.
+
+**Top perf — Nucleo + UI:**
 
 ```mermaid
 block-beta
-    columns 7
+    columns 5
+    space TFT["TFT Display<br/>8-pin header"]:3 space
+    space:5
+    ENC["Encoder"] NUCLEO["NUCLEO F446RE<br/>(morpho headers)"]:3 LEDS["LEDs<br/>+ Button"]
+    space:5
+    J1["JST Conn1<br/>(fast signals)"]:2 space J2["JST Conn2<br/>(analog)"]:2
+```
 
-    space:2 TFT["TFT Display<br/>8-pin header"]:3 space:2
-    space:7
-    ENC["Encoder"]:2 NUCLEO["NUCLEO F446RE<br/>(morpho headers)<br/>CN7 | board | CN10"]:3 LEDS["LEDs<br/>+ Button"]:2
-    space:7
-    ISO1["Si8621 #1<br/>OUTPUT<br/>ISO"]:2 space:3 ISO2["Si8621 #2<br/>INPUT<br/>ISO"]:2
-    space:7
-    PWM_OUT["SCREW TERMINALS<br/>PWM_A | PWM_B"]:3 space FAULT_FREQ["SCREW TERMINALS<br/>FAULT | FREQ"]:3
-    space:7
-    POWER["5V IN"]:2 space:3 NTC_T["NTC"]:2
+**Lower perf — isolation, drivers, power:**
+
+```mermaid
+block-beta
+    columns 5
+    J1b["JST Conn1<br/>up to Nucleo"]:2 space J2b["JST Conn2<br/>up to Nucleo"]:2
+    space:5
+    ISO1["Si8621 #1<br/>OUTPUT ISO"]:2 HC14["74HC14<br/>freq cond"] ISO2["Si8621 #2<br/>INPUT ISO"]:2
+    space:5
+    IXDN["IXDN604 x2<br/>(15V gate drive)"]:2 space RLY["Relay + Opto<br/>(contactor)"]:2
+    space:5
+    PWRIN["12V IN +<br/>5V step-down"]:2 GDT_T["GDT out<br/>(A/B)"] FB["FAULT/FREQ<br/>+ NTC in"]:2
 ```
 
 ## Wiring Notes
@@ -107,10 +146,15 @@ block-beta
 3. PB13 → Si8621 #1 → PWM_B output connector
 
 ### Power Routing
-- 5V rail from input screw terminal → Nucleo VIN + Si8621 Vdd2 (power side)
-- 3.3V from Nucleo → Si8621 Vdd1 (logic side) + pull-ups + ADC reference
+- 12V wallwart → lower board 12V rail → up JST Conn1 (Red) to Nucleo VIN
+  (7–12V required; 5V will NOT run the Nucleo regulator)
+- 12V → adjustable step-down board → 5V rail → Si8621 Vdd2, 74HC14, relay coil
+- 3.3V from Nucleo → down JST Conn1 (Blue) → Si8621 Vdd1 (logic side) +
+  pull-ups + ADC reference
+- 15V separate supply → IXDN604 VCC
 - 100nF decoupling cap at EACH IC power pin
-- 100µF bulk cap near 5V input terminal
+- 100µF bulk cap near the 12V input and 10µF near each IXDN604
+- Nucleo jumper on **E5V** when running from external 12V; **U5V** when on USB
 
 ### Si8621 Pinout (SOIC-8)
 
@@ -224,21 +268,26 @@ block-beta
 ### Power Rails on Combined PCB
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│  [3.3V RAIL]          [5V RAIL]         [15V RAIL]     │
-│  From Nucleo          From supply       Gate drive      │
-│  Si8621 Vdd1          Si8621 Vdd2       IXDN604 VCC    │
-│  Pull-ups             Nucleo VIN        (separate       │
-│  ADC ref                                 supply)        │
-│                                                         │
-│  [LOGIC GND]          [POWER GND ─────── POWER GND]    │
-│  Nucleo side          Si8621 side 2      IXDN side     │
-│                                                         │
-│  ════ ISOLATION BARRIER (no connection) ════            │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  [12V RAIL]      [3.3V RAIL]     [5V RAIL]        [15V RAIL]       │
+│  Wallwart        From Nucleo     From step-down   Gate drive       │
+│  → Nucleo VIN    Si8621 Vdd1     Si8621 Vdd2      IXDN604 VCC      │
+│  → 5V step-down  Pull-ups        74HC14 VCC       (separate        │
+│                  ADC ref         Relay coil        supply)         │
+│                                                                    │
+│  [LOGIC GND]                     [POWER GND ─────── POWER GND]     │
+│  Nucleo side                     Si8621 side 2 / 74HC14 / relay    │
+│                                  / IXDN side                       │
+│                                                                    │
+│  ════ ISOLATION BARRIER (no connection between L/P grounds) ════   │
+│                                                                    │
+└──────────────────────────────────────────────────────────────────┘
 
-Note: 5V and 15V share the same POWER GND (they're on the same
-side of the isolation barrier). Only LOGIC GND is separate.
+Notes:
+- Nucleo VIN needs 7-12V; it runs from the 12V rail, NOT 5V.
+- 5V and 15V share POWER GND (same side of the isolation barrier).
+- The 12V rail and its derived 5V also sit on the power-side domain;
+  only the Nucleo's LOGIC GND is isolated from POWER GND (via Si8621).
+- The Nucleo's 3.3V (logic side) crosses DOWN to Si8621 Vdd1 only.
 ```
