@@ -67,7 +67,11 @@
 //  With PSC=0 and TIM1CLK=180MHz:
 //    50 kHz  -> ARR = 3599
 //    100 kHz -> ARR = 1799
-#define TIM1_CLOCK_HZ       180000000UL
+// TIM1 timer clock — CALIBRATED against measured PWM on the AD3.
+// Assumed 180 MHz gave 81.8kHz@80k cmd and 51.1kHz@50k cmd; both back-
+// calculate to ~184.0 MHz actual (the Arduino STM32 core's SYSCLK config).
+// Using the measured value makes commanded freq/dead-time match reality.
+#define TIM1_CLOCK_HZ       184000000UL
 #define PWM_FREQ_MIN_HZ     50000     // Lower bound of operating range
 #define PWM_FREQ_MAX_HZ     100000    // Upper bound of operating range
 #define PWM_FREQ_START_HZ   80000     // Default startup frequency (coil dependent)
