@@ -134,6 +134,9 @@ Odd pins = left column, even pins = right column.
 
 > **Bold** = special/reserved: debug (SWD/SWO), onboard LED, serial console (VCP), or key project functions (TIM1 PWM/BKIN).
 
+> For the inter-board wiring (which of these pins travel down to the driver
+> board and on which JST connector), see `JST_CONNECTORS.md`.
+
 ## Project Pin Assignments — Where They Land
 
 | Function | MCU Pin | Morpho Location | Arduino Alias |
