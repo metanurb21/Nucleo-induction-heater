@@ -1,0 +1,47 @@
+Good plan — stacked perfs with the Nucleo on top for easy removal is smart. Let me count what actually needs to cross between the two boards, because that determines how many JST connectors you need.
+
+Signals crossing Nucleo perf → lower perf
+Looking at the pin map, here's what has to travel down to the driver/IXDN board:
+
+Logic-side signals going down:
+
+PWM_A (PA8) → Si8621
+PWM_B (PB13) → Si8621
+FAULT_IN/BKIN (PB12) ← from Si8621
+FREQ_FB (PA0) ← from Si8621
+CONTACTOR (PB14) → opto
+ADC_OCP (PA1) ← sense
+ADC_NTC (PC0) ← sense
+ADC_AC (PC1) ← sense
+ADC_VBUS (PA4) ← sense
+Power/ground that must cross:
+
+3.3V (Nucleo → Si8621 Vdd1 logic side)
+5V (if the lower board's 5V comes up, or Nucleo VIN feed)
+GND (logic ground — needs solid connection, ideally multiple pins)
+That's ~9 signals + 3 power/ground = ~12 nets, which fits in two 8-pin JST with room to spare.
+
+My recommendation: use both 8-pin JST (16 total), but split them by domain
+Connector 1 — "fast/critical" signals:
+
+PWM_A, PWM_B, BKIN, FREQ_FB (the 4 timing-critical ones)
+2× GND (put grounds adjacent to the fast signals for clean return paths)
+3.3V
+1 spare
+Connector 2 — "slow/analog" signals:
+
+ADC_OCP, ADC_NTC, ADC_AC, ADC_VBUS, CONTACTOR
+GND
+5V
+1 spare
+Why split this way:
+
+Ground integrity — the PWM and BKIN signals are the ones where a flaky ground causes real trouble (jitter, false trips). Giving them their own dedicated grounds in the same connector keeps return currents tight.
+Keeps fast signals away from analog — the switching PWM edges won't couple noise into your ADC sense lines if they're on a separate connector/cable.
+Spares — you've got 2 free pins for "oh I forgot X" during bring-up, which always happens.
+One caution on JST for BKIN
+The BKIN fault line is your safety interlock. A JST connector is a potential disconnect point — if it wiggles loose, you want the fail-safe behavior (gates off), not the fault-defeated behavior. Your config already has a pull-up on PB12 and the break is active-LOW, so a disconnected BKIN reads high = "no fault" = not fail-safe on that wire alone.
+
+Worth thinking about: either keep the pulldown/pullup logic such that a disconnected connector trips the break, or make sure the 10kΩ pulldowns on the IXDN inputs (already in your design) mean a disconnected Nucleo = no PWM = gates off regardless. That second path already saves you — no PWM signal reaching the gate drivers means no drive, connector or not. So you're covered, but keep it in mind when you decide which pins share which connector.
+
+Two 8-pin JST, split by domain. That's the move.

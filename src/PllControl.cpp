@@ -20,12 +20,20 @@
 #include "PllControl.h"
 #include "PwmDrive.h"
 #include "config.h"
-#include "stm32f4xx.h"
+#include <HardwareTimer.h>
+
+// We use the Arduino STM32 core's HardwareTimer for TIM2 input capture.
+// This avoids colliding with the core's own TIM2_IRQHandler (which caused
+// a "multiple definition" link error when we hand-rolled the ISR). The
+// HardwareTimer attaches our callback to the capture event cleanly.
 
 namespace PllControl
 {
     // TIM2 timer clock on F446RE: APB1 timer domain = 90 MHz.
     static const uint32_t TIM2_CLOCK_HZ = 90000000UL;
+
+    static HardwareTimer* s_timer = nullptr;
+    static const uint32_t CAP_CHANNEL = 1;   // TIM2_CH1 on PA0
 
     static volatile uint32_t s_lastCapture = 0;
     static volatile uint32_t s_period = 0;
@@ -36,47 +44,10 @@ namespace PllControl
     static int32_t s_detuneHz = DETUNE_DEFAULT_HZ;
     static bool s_locked = false;
 
-    // ---- init ---------------------------------------------
-    void init()
-    {
-        RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-        RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-
-        // PA0 -> AF1 (TIM2_CH1)
-        GPIOA->MODER &= ~(3u << (0 * 2));
-        GPIOA->MODER |=  (2u << (0 * 2));      // AF mode
-        GPIOA->AFR[0] &= ~(0xFu << (0 * 4));
-        GPIOA->AFR[0] |=  (1u   << (0 * 4));   // AF1
-        GPIOA->PUPDR &= ~(3u << (0 * 2));      // no pull (driven by Si8621)
-
-        // TIM2 base: max resolution, free-running
-        TIM2->PSC = 0;
-        TIM2->ARR = 0xFFFFFFFF;                // 32-bit full range
-
-        // Input capture on CH1: map TI1, no prescaler, no filter (start)
-        TIM2->CCMR1 &= ~TIM_CCMR1_CC1S;
-        TIM2->CCMR1 |= (1u << TIM_CCMR1_CC1S_Pos);  // CC1 = input, IC1->TI1
-        TIM2->CCMR1 &= ~TIM_CCMR1_IC1F;             // no digital filter yet
-        TIM2->CCMR1 &= ~TIM_CCMR1_IC1PSC;           // capture every edge
-
-        // Rising edge, enable capture
-        TIM2->CCER &= ~(TIM_CCER_CC1P | TIM_CCER_CC1NP);  // rising
-        TIM2->CCER |= TIM_CCER_CC1E;
-
-        // Capture interrupt
-        TIM2->DIER |= TIM_DIER_CC1IE;
-        NVIC_SetPriority(TIM2_IRQn, 2);
-        NVIC_EnableIRQ(TIM2_IRQn);
-
-        TIM2->CR1 |= TIM_CR1_CEN;
-    }
-
-    // ---- capture ISR --------------------------------------
-    // Defined at file scope below via extern "C".
-
+    // ---- capture callback (called from HardwareTimer ISR) --
     void handleCapture()
     {
-        uint32_t now = TIM2->CCR1;             // reading CCR1 clears CC1IF
+        uint32_t now = s_timer->getCaptureCompare(CAP_CHANNEL);
         if (s_haveCapture)
         {
             s_period = now - s_lastCapture;    // 32-bit wrap is fine
@@ -84,6 +55,22 @@ namespace PllControl
         s_lastCapture = now;
         s_haveCapture = true;
         s_edgeTimeoutCtr = 0;
+    }
+
+    // ---- init ---------------------------------------------
+    void init()
+    {
+        s_timer = new HardwareTimer(TIM2);
+
+        // Max resolution: no prescale, full 32-bit range.
+        s_timer->setPrescaleFactor(1);
+        s_timer->setOverflow(0xFFFFFFFF, TICK_FORMAT);
+
+        // Configure CH1 (PA0) for rising-edge input capture.
+        s_timer->setMode(CAP_CHANNEL, TIMER_INPUT_CAPTURE_RISING, PIN_FREQ_FB);
+        s_timer->attachInterrupt(CAP_CHANNEL, handleCapture);
+
+        s_timer->resume();
     }
 
     // ---- update loop --------------------------------------
@@ -164,14 +151,5 @@ namespace PllControl
         s_measuredHz = 0;
         s_locked = false;
         s_edgeTimeoutCtr = 0;
-    }
-}
-
-// ---- TIM2 IRQ handler (C linkage for the vector table) ----
-extern "C" void TIM2_IRQHandler(void)
-{
-    if (TIM2->SR & TIM_SR_CC1IF)
-    {
-        PllControl::handleCapture();
     }
 }
