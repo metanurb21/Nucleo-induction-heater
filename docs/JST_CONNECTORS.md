@@ -19,13 +19,13 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 | Pin | Color  | Signal   | Nucleo Pin | Function          | Morpho   | Direction      |
 |-----|--------|----------|------------|-------------------|----------|----------------|
 | 1   | Black  | PWM_A    | PA8        | TIM1_CH1          | CN10-23  | Nucleo → lower |
-| 2   | Red    | 12V      | VIN        | Power up to Nucleo VIN | CN7-24 | lower → Nucleo |
+| 2   | Red    | LOGIC GND| GND        | Logic ground (isolator Vdd1 return) | CN7-20 | — |
 | 3   | White  | PWM_B    | PB13       | TIM1_CH1N         | CN10-30  | Nucleo → lower |
-| 4   | Yellow | GND      | GND        | Logic ground      | CN7-20   | —              |
+| 4   | Yellow | LOGIC GND| GND        | Logic ground      | CN10-9   | —              |
 | 5   | Orange | BKIN     | PB12       | TIM1_BKIN         | CN10-16  | lower → Nucleo |
 | 6   | Green  | FREQ_FB  | PA0        | TIM2_CH1 (capture)| CN7-28   | lower → Nucleo |
 | 7   | Blue   | 3V3      | 3V3        | Si8621 Vdd1 (logic side) | CN7-16 | Nucleo → lower |
-| 8   | Purple | GND      | GND        | Logic ground      | CN10-9   | —              |
+| 8   | Purple | LOGIC GND| GND        | Logic ground      | CN10-20  | —              |
 
 ## Connector 2 — Slow / Analog Signals
 
@@ -44,18 +44,29 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 
 ## Notes
 
-- **12V (Conn 1, Red/pin 2):** feeds the Nucleo VIN from the lower board's
-  12V wallwart rail. It's DC power, not a switching signal — no noise concern
-  sharing the connector with the PWM lines.
-- **Grounds:** Conn 1 keeps a logic ground on Yellow (pin 4, next to PWM_B) and
-  Purple (pin 8). Conn 2 has one analog ground on Green (pin 6).
-- **3.3V (Conn 1, Blue/pin 7):** from the Nucleo's onboard regulator, travels
-  DOWN to power the Si8621 logic side (Vdd1) only. The lower board's 5V rail
-  powers everything else (Si8621 Vdd2, 74HC14, relay coil).
-- **5V (Conn 2, Blue/pin 7):** optional — only wire if the Nucleo perf needs
-  5V. Normally the Nucleo runs from the 12V on VIN, so this may stay unused.
+- **TRUE ISOLATION:** The Nucleo is powered INDEPENDENTLY (USB or its own
+  isolated 12V brick), NOT from the lower board. So Connector 1 carries NO power
+  up to the Nucleo — it only carries the Nucleo's LOGIC 3.3V + logic ground DOWN
+  to the isolator logic side, plus the isolated signals.
+- **Logic ground crosses down (Conn 1: Red/2, Yellow/4, Purple/8):** three logic
+  grounds carry the Nucleo's ground reference down to the Si8621 Vdd1/GND1 side.
+  This logic ground connects ONLY to Si8621 pin 4 (GND1) on the lower board — it
+  must NEVER touch the lower board's POWER ground. That separation is the whole
+  point of the isolators.
+- **3.3V (Conn 1, Blue/pin 7):** Nucleo's regulator output, powers Si8621 Vdd1
+  (logic side) only. Referenced to the logic grounds above.
+- **Conn 2 grounds:** Green (pin 6) is a logic ground for the analog/ADC returns
+  going back to the Nucleo. The sense signals (OCP/NTC/AC/VBUS) reference this.
+- **5V (Conn 2, Blue/pin 7):** spare / unused (Nucleo no longer needs 5V up).
 - **Fail-safe:** BKIN is active-LOW with a pull-up on the Nucleo. If a JST is
   unplugged, no PWM reaches the gate drivers anyway (10kΩ pulldowns on the
   IXDN604 inputs hold the gates OFF), so a disconnected board = gates off.
 - **Assembly:** JST housings hot-glued to the perf after final seating to resist
   contactor vibration while staying removable with heat.
+
+> ⚠️ ADC ground caution: the analog sense signals (Conn 2) originate on the
+> POWER side but must be read against the Nucleo's LOGIC ground. If you did NOT
+> isolate the ADC path, the sense grounds would bridge the two domains and
+> defeat isolation. Options: (a) isolated ADC front-end, or (b) accept that the
+> sense lines form a deliberate single-point ground link. Decide this before
+> full-power runs — flagged for Phase 4/5. For low-voltage bring-up it's fine.

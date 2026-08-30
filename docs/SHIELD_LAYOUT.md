@@ -67,24 +67,29 @@ graph LR
 
 ## Power Distribution
 
-The lower board is fed by a 12V wallwart. An adjustable step-down board makes
-the 5V rail. The Nucleo runs from **12V on VIN** (its onboard regulator needs
-7–12V — 5V is NOT enough), and the Nucleo's own 3.3V output powers the isolator
-logic side. See `JST_CONNECTORS.md` for which rails cross between the boards.
+**TRUE GALVANIC ISOLATION.** The Nucleo is powered INDEPENDENTLY (USB during
+bench work, or its own isolated wall brick to VIN) — NOT from the lower board's
+12V. This keeps LOGIC ground (Nucleo) fully floating from POWER ground (lower
+board), with the Si8621 isolators as the only bridge. The screaming power stage
+cannot inject ground noise into the MCU.
+
+The lower board is fed by its own 12V wallwart; a step-down board makes the 5V
+rail. See `JST_CONNECTORS.md` for which signals cross between the boards.
 
 ```mermaid
 graph TD
-    WALL["12V Wallwart"] --> R12["12V RAIL"]
-    R12 --> STEP["5V Step-down board"]
-    R12 -->|"JST Conn1 Red → VIN"| VIN["Nucleo VIN (7-12V)"]
-    STEP --> R5["5V RAIL"]
-    VIN --> V33["Nucleo 3.3V out"]
+    USB["USB or independent<br/>12V brick"] --> NUC["Nucleo"]
+    NUC --> V33["Nucleo 3.3V out"]
 
-    R5 --> ISO_VDD2["Si8621 Vdd2 (both chips)"]
+    WALL["12V Wallwart<br/>(lower board only)"] --> R12["12V RAIL"]
+    R12 --> STEP["5V Step-down board"]
+    STEP --> R5["5V RAIL"]
+
+    R5 --> ISO_VDD2["Si8621 Vdd2 (both chips) — POWER side"]
     R5 --> HC14V["74HC14 VCC"]
     R5 --> RELAY["Relay coil (contactor opto)"]
 
-    V33 -->|"JST Conn1 Blue → lower"| ISO_VDD1["Si8621 Vdd1 (logic side)"]
+    V33 -->|"JST Conn1 Blue + logic GND → lower"| ISO_VDD1["Si8621 Vdd1 (logic side) — LOGIC island"]
     V33 --> PULLUPS["Pull-ups + ADC ref"]
 
     R5 -.->|"100nF each"| ISO_VDD2
@@ -93,12 +98,18 @@ graph TD
 
 **Rail summary:**
 
-| Rail | Source | Powers |
-|------|--------|--------|
-| 12V | Wallwart | Nucleo VIN (via JST Conn1 Red), 5V step-down input |
-| 5V | Step-down from 12V | Si8621 Vdd2, 74HC14, relay coil |
-| 3.3V | Nucleo onboard regulator | Si8621 Vdd1 (logic side), pull-ups, ADC ref (crosses down via JST Conn1 Blue) |
-| 15V | Separate supply | IXDN604 VCC (gate drive) |
+| Rail | Source | Ground domain | Powers |
+|------|--------|---------------|--------|
+| Nucleo 5V | USB or independent 12V brick → VIN | LOGIC | Nucleo + 3.3V regulator |
+| 3.3V | Nucleo onboard regulator | LOGIC | Si8621 Vdd1 (logic side), pull-ups, ADC ref — crosses down via JST Conn1 Blue **with logic GND** |
+| 12V | Lower-board wallwart | POWER | 5V step-down input |
+| 5V | Step-down from 12V | POWER | Si8621 Vdd2, 74HC14, relay coil |
+| 15V | Separate supply | POWER | IXDN604 VCC (gate drive) |
+
+> The 3.3V + logic-GND that cross down form a small "logic island" around the
+> A-side of each Si8621 (pins 1-4). Everything on pins 5-8 is POWER ground.
+> The isolation barrier runs between pins 4 and 5 — keep these zones physically
+> separate on the lower perf.
 
 ## Physical Layout (Stacked Perfboards)
 
