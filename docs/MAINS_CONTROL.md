@@ -1,6 +1,29 @@
 # Mains Contactor Control & Safety Shutdown
 
-## Overview
+## Mains Path Order (system level)
+
+```
+AC Mains → EMI Filter → Contactor → Rectifier → DC Bus → H-Bridge
+```
+
+### Mains EMI Filter (chassis-mount)
+
+A metal-cased mains EMI filter block (CW/YS-series type, 115/250V, 50A —
+e.g. YS36Q1AN-50A). Internally a common-mode choke + X-caps (line-line) +
+Y-caps (line-ground). Blocks the inverter's switching noise from conducting
+back onto house wiring, and blocks incoming mains garbage.
+
+- **Placement:** right where mains enters the enclosure, BEFORE the contactor.
+- **⚠️ EARTH BOND REQUIRED:** the filter case MUST be solidly bonded to mains
+  earth/safety ground. The Y-caps shunt common-mode noise to earth through the
+  case. No ground = filter doesn't work AND the case can float to ~half mains
+  voltage (shock hazard). Non-negotiable.
+- **Keep input (unfiltered) wires away from output (filtered) wires** so noise
+  doesn't couple across the gap.
+- **GFCI note:** Y-cap leakage current can occasionally nuisance-trip a GFCI.
+- Sized at 50A / 12kW — comfortable margin over actual draw.
+
+## Contactor Control Overview
 
 The contactor is a FUJI 100A 15kV unit. Its coil requires 120V AC to energize.
 The Nucleo controls it indirectly through an isolation chain:
