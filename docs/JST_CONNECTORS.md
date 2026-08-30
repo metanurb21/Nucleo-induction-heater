@@ -19,13 +19,13 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 | Pin | Color  | Signal   | Nucleo Pin | Function          | Morpho   | Direction      |
 |-----|--------|----------|------------|-------------------|----------|----------------|
 | 1   | Black  | PWM_A    | PA8        | TIM1_CH1          | CN10-23  | Nucleo → lower |
-| 2   | Red    | LOGIC GND| GND        | Logic ground (isolator Vdd1 return) | CN7-20 | — |
+| 2   | Red    | GND      | GND        | Ground (to star)  | CN7-20   | —              |
 | 3   | White  | PWM_B    | PB13       | TIM1_CH1N         | CN10-30  | Nucleo → lower |
-| 4   | Yellow | LOGIC GND| GND        | Logic ground      | CN10-9   | —              |
+| 4   | Yellow | GND      | GND        | Ground (to star)  | CN10-9   | —              |
 | 5   | Orange | BKIN     | PB12       | TIM1_BKIN         | CN10-16  | lower → Nucleo |
 | 6   | Green  | FREQ_FB  | PA0        | TIM2_CH1 (capture)| CN7-28   | lower → Nucleo |
-| 7   | Blue   | 3V3      | 3V3        | Si8621 Vdd1 (logic side) | CN7-16 | Nucleo → lower |
-| 8   | Purple | LOGIC GND| GND        | Logic ground      | CN10-20  | —              |
+| 7   | Blue   | 3V3      | 3V3        | Si8621 logic-side ref (optional) | CN7-16 | Nucleo → lower |
+| 8   | Purple | GND      | GND        | Ground (to star)  | CN10-20  | —              |
 
 ## Connector 2 — Slow / Analog Signals
 
@@ -44,29 +44,31 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 
 ## Notes
 
-- **TRUE ISOLATION:** The Nucleo is powered INDEPENDENTLY (USB or its own
-  isolated 12V brick), NOT from the lower board. So Connector 1 carries NO power
-  up to the Nucleo — it only carries the Nucleo's LOGIC 3.3V + logic ground DOWN
-  to the isolator logic side, plus the isolated signals.
-- **Logic ground crosses down (Conn 1: Red/2, Yellow/4, Purple/8):** three logic
-  grounds carry the Nucleo's ground reference down to the Si8621 Vdd1/GND1 side.
-  This logic ground connects ONLY to Si8621 pin 4 (GND1) on the lower board — it
-  must NEVER touch the lower board's POWER ground. That separation is the whole
-  point of the isolators.
-- **3.3V (Conn 1, Blue/pin 7):** Nucleo's regulator output, powers Si8621 Vdd1
-  (logic side) only. Referenced to the logic grounds above.
-- **Conn 2 grounds:** Green (pin 6) is a logic ground for the analog/ADC returns
-  going back to the Nucleo. The sense signals (OCP/NTC/AC/VBUS) reference this.
-- **5V (Conn 2, Blue/pin 7):** spare / unused (Nucleo no longer needs 5V up).
+- **Single star ground:** All GND pins (Conn 1: Red/2, Yellow/4, Purple/8;
+  Conn 2: Green/6) tie to the one star-ground point on the lower board along
+  with the 5V/12V/15V returns. The Nucleo shares this ground. Simple and clean.
+- **Grounds by connector:** Conn 1 carries three grounds flanking the fast PWM
+  signals for tight return paths. Conn 2 has one ground for the analog returns.
+- **3.3V (Conn 1, Blue/pin 7):** Nucleo's 3.3V — optional reference down to the
+  isolator logic side. (Si8621 can run both sides from 5V; wire 3.3V only if you
+  want the logic side at 3.3V to match Nucleo I/O levels exactly.)
+- **5V (Conn 2, Blue/pin 7):** spare / unused.
 - **Fail-safe:** BKIN is active-LOW with a pull-up on the Nucleo. If a JST is
   unplugged, no PWM reaches the gate drivers anyway (10kΩ pulldowns on the
   IXDN604 inputs hold the gates OFF), so a disconnected board = gates off.
 - **Assembly:** JST housings hot-glued to the perf after final seating to resist
   contactor vibration while staying removable with heat.
 
-> ⚠️ ADC ground caution: the analog sense signals (Conn 2) originate on the
-> POWER side but must be read against the Nucleo's LOGIC ground. If you did NOT
-> isolate the ADC path, the sense grounds would bridge the two domains and
-> defeat isolation. Options: (a) isolated ADC front-end, or (b) accept that the
-> sense lines form a deliberate single-point ground link. Decide this before
-> full-power runs — flagged for Phase 4/5. For low-voltage bring-up it's fine.
+## Noise Mitigation (single-ground strategy)
+
+Since logic and power share one ground, noise control comes from:
+- **Single star ground** — all returns meet at ONE point, no daisy-chaining.
+  Prevents ground loops and shared-path voltage drops. (Planned.)
+- **Twisted signal leads** — each JST signal twisted with a ground return to
+  minimize loop area / pickup. (Done.)
+- **Decoupling caps** — 100nF at every IC power pin + bulk caps (in schematic).
+- **Physical separation** — fast PWM/gate lines kept away from analog sense
+  lines (Conn 1 vs Conn 2 split already does this).
+- If MCU glitching appears under load during testing, revisit (ferrite beads on
+  the Nucleo supply + sense lines, or true isolation). Don't pre-solve unseen
+  noise — the AD3 can pinpoint the actual source if it happens.

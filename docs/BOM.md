@@ -40,9 +40,20 @@ Galvanically isolated signal path between controller and power stage.
 | 4 | Capacitor | 100nF ceramic | Through-hole | Decoupling on isolators + Nucleo VIN | |
 | 1 | Capacitor | 10uF ceramic or electrolytic | Through-hole | Isolator Vdd2 side bulk | |
 
-> Power: Nucleo takes 5V on VIN pin (CN7 pin 18) from existing 5V rail.
-> Isolators need power on both sides: 3.3V from Nucleo on side 1, 5V from
-> driver rail on side 2.
+### Extra decoupling for noisy inverter environment (recommended)
+
+| Qty | Part | Value/Type | Package | Purpose | Notes |
+|-----|------|-----------|---------|---------|-------|
+| 4 | Capacitor | 10nF ceramic | Through-hole | Parallel HF bypass on each Si8621 Vdd1/Vdd2 | Alongside the 100nF; catches high-freq hash |
+| 2 | Capacitor | 100nF + 10uF | Through-hole | Nucleo 3.3V (ADC ref) local decoupling | Clean ADC reference = stable readings |
+| 2 | Resistor | 1kR 1/4W | Through-hole | RC filter series R on OCP + AC sense ADC inputs | With 10nF = ~16kHz rolloff |
+| 2 | Capacitor | 10nF ceramic | Through-hole | RC filter cap on OCP + AC sense ADC inputs | Kills switching pickup on analog lines |
+| 1 | Capacitor | 47-100uF electrolytic | Through-hole | Bulk reservoir on 5V near Si8621/74HC14/relay | Handles relay coil inrush |
+
+> Power (single star ground): Nucleo runs from USB or its own wall brick.
+> Si8621 can run both sides from the 5V rail; wire Nucleo 3.3V to the logic
+> side only if you want it at 3.3V to match Nucleo I/O levels. All grounds
+> meet at the single star point.
 
 ## User Interface
 

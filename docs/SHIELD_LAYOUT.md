@@ -67,49 +67,50 @@ graph LR
 
 ## Power Distribution
 
-**TRUE GALVANIC ISOLATION.** The Nucleo is powered INDEPENDENTLY (USB during
-bench work, or its own isolated wall brick to VIN) — NOT from the lower board's
-12V. This keeps LOGIC ground (Nucleo) fully floating from POWER ground (lower
-board), with the Si8621 isolators as the only bridge. The screaming power stage
-cannot inject ground noise into the MCU.
+**SINGLE STAR GROUND.** All grounds (Nucleo logic, 5V, 12V, 15V returns) tie
+together at one star point. The Si8621 chips act as fast signal buffers /
+level shifters rather than true galvanic isolators in this configuration —
+they still give clean edges and some noise rejection. Chosen for simplicity;
+revisit true isolation only if bench testing shows the MCU glitching under load.
 
-The lower board is fed by its own 12V wallwart; a step-down board makes the 5V
-rail. See `JST_CONNECTORS.md` for which signals cross between the boards.
+Noise control relies on: single star ground, twisted signal leads (done),
+and decoupling caps at every IC. The Nucleo runs from USB (bench) or a wall
+brick; its ground meets the lower board ground at the star point.
 
 ```mermaid
 graph TD
-    USB["USB or independent<br/>12V brick"] --> NUC["Nucleo"]
-    NUC --> V33["Nucleo 3.3V out"]
-
-    WALL["12V Wallwart<br/>(lower board only)"] --> R12["12V RAIL"]
+    WALL["12V Wallwart"] --> R12["12V RAIL"]
     R12 --> STEP["5V Step-down board"]
     STEP --> R5["5V RAIL"]
+    R5 --> V33["Nucleo 3.3V (from USB/brick reg)"]
 
-    R5 --> ISO_VDD2["Si8621 Vdd2 (both chips) — POWER side"]
+    R5 --> ISO_VDD1["Si8621 Vdd1 (logic side)"]
+    R5 --> ISO_VDD2["Si8621 Vdd2 (power side)"]
     R5 --> HC14V["74HC14 VCC"]
     R5 --> RELAY["Relay coil (contactor opto)"]
-
-    V33 -->|"JST Conn1 Blue + logic GND → lower"| ISO_VDD1["Si8621 Vdd1 (logic side) — LOGIC island"]
     V33 --> PULLUPS["Pull-ups + ADC ref"]
 
+    R12 --> STAR["★ SINGLE STAR GROUND ★"]
+    R5 --> STAR
+    HV15["15V supply"] --> STAR
+
     R5 -.->|"100nF each"| ISO_VDD2
-    V33 -.->|"100nF each"| ISO_VDD1
+    R5 -.->|"100nF each"| ISO_VDD1
 ```
 
-**Rail summary:**
+**Rail summary (all share the single star ground):**
 
-| Rail | Source | Ground domain | Powers |
-|------|--------|---------------|--------|
-| Nucleo 5V | USB or independent 12V brick → VIN | LOGIC | Nucleo + 3.3V regulator |
-| 3.3V | Nucleo onboard regulator | LOGIC | Si8621 Vdd1 (logic side), pull-ups, ADC ref — crosses down via JST Conn1 Blue **with logic GND** |
-| 12V | Lower-board wallwart | POWER | 5V step-down input |
-| 5V | Step-down from 12V | POWER | Si8621 Vdd2, 74HC14, relay coil |
-| 15V | Separate supply | POWER | IXDN604 VCC (gate drive) |
+| Rail | Source | Powers |
+|------|--------|--------|
+| Nucleo | USB or wall brick | Nucleo + its 3.3V regulator |
+| 3.3V | Nucleo onboard regulator | pull-ups, ADC ref |
+| 12V | Wallwart | 5V step-down input |
+| 5V | Step-down from 12V | Si8621 (both sides), 74HC14, relay coil |
+| 15V | Separate supply | IXDN604 VCC (gate drive) |
 
-> The 3.3V + logic-GND that cross down form a small "logic island" around the
-> A-side of each Si8621 (pins 1-4). Everything on pins 5-8 is POWER ground.
-> The isolation barrier runs between pins 4 and 5 — keep these zones physically
-> separate on the lower perf.
+> Si8621 GND1 (pin 4) and GND2 (pin 5) both tie to the single ground here.
+> Vdd1 (pin 1) and Vdd2 (pin 8) both go to 5V. The chip still buffers the
+> A↔B signals cleanly across pins.
 
 ## Physical Layout (Stacked Perfboards)
 
