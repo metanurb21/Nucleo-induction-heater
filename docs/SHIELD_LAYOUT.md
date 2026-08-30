@@ -51,6 +51,9 @@ graph LR
         PB6["PB6 CS"] --> TFT
         PC7["PC7 DC"] --> TFT
         PA9["PA9 RST"] --> TFT
+        PB2["PB2 BLK"] --> TFT
+        V33["3.3V VCC"] --> TFT
+        GNDT["GND"] --> TFT
     end
 
     subgraph Controls
@@ -145,6 +148,22 @@ block-beta
 ```
 
 ## Wiring Notes
+
+### TFT Display Wiring (ST7735 1.8" — 8 pins, software SPI)
+
+| TFT Pin | Nucleo Pin | Morpho  | Notes |
+|---------|-----------|---------|-------|
+| SCK/SCL | PA5       | CN10-11 | SPI clock |
+| SDA/MOSI| PA7       | CN10-15 | SPI data |
+| CS      | PB6       | CN10-17 | Chip select |
+| DC/A0/RS| PC7       | CN10-19 | Data/command |
+| RST     | PA9       | CN10-21 | Reset |
+| BLK/LED | PB2       | CN10-22 | **Backlight — REQUIRED. Screen is dark if unwired.** |
+| VCC     | 3.3V      | —       | Check module (some accept 5V via onboard reg) |
+| GND     | GND       | —       | — |
+
+> Lesson learned: BLK/backlight must be wired (driven HIGH). Without it the
+> display appears completely dead even though SPI and logic are fine.
 
 ### Isolation Boundary
 - **LEFT side** of board = isolated outputs (PWM to gate drivers)
