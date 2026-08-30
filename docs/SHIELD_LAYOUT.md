@@ -204,33 +204,37 @@ block-beta
   Channel B: A2 (pin 3) ↔ B2 (pin 6)
 ```
 
-### Si8621 #1 — OUTPUT Isolation (Nucleo → Gate Drivers)
+> **SINGLE STAR GROUND build:** both VDD1 and VDD2 → 5V; both GND1 and GND2 →
+> the single star ground. (Earlier drafts referenced a two-ground isolation
+> scheme with 3.3V on the logic side — that was reverted. Wire per below.)
+
+### Si8621 #1 — OUTPUT (PWM: Nucleo → Gate Drivers)
 
 | Pin | Name | Connection |
 |-----|------|-----------|
-| 1 | VDD1 | Nucleo 3.3V + 100nF cap to GND1 |
-| 2 | A1 | PA8 (TIM1_CH1) via 100Ω series resistor |
-| 3 | A2 | PB13 (TIM1_CH1N) via 100Ω series resistor |
-| 4 | GND1 | Nucleo GND (logic ground) |
-| 5 | GND2 | Power stage GND (isolated) |
-| 6 | B2 | PWM_B screw terminal (+ 3.3V zener to GND2) |
-| 7 | B1 | PWM_A screw terminal (+ 3.3V zener to GND2) |
-| 8 | VDD2 | 5V driver rail + 100nF cap to GND2 |
+| 1 | VDD1 | 5V + 100nF (+ 10nF) cap to GND |
+| 2 | A1 | PWM_A from Nucleo (PA8) via JST Conn1 Black, through 100Ω series |
+| 3 | A2 | PWM_B from Nucleo (PB13) via JST Conn1 White, through 100Ω series |
+| 4 | GND1 | Star ground |
+| 5 | GND2 | Star ground |
+| 6 | B2 | → IXDN604 #2 IN (PWM_B), via 10kΩ pulldown to GND |
+| 7 | B1 | → IXDN604 #1 IN (PWM_A), via 10kΩ pulldown to GND |
+| 8 | VDD2 | 5V + 100nF (+ 10nF) cap to GND |
 
 *Signal flows: A1→B1 (PWM_A), A2→B2 (PWM_B)*
 
-### Si8621 #2 — INPUT Isolation (Power Stage → Nucleo)
+### Si8621 #2 — INPUT (Feedback + Fault: Power → Nucleo)
 
 | Pin | Name | Connection |
 |-----|------|-----------|
-| 1 | VDD1 | Nucleo 3.3V + 100nF cap to GND1 |
-| 2 | A1 | PB12 (TIM1_BKIN) via 1kΩ + schottky to 3.3V |
-| 3 | A2 | PA0 (TIM2_CH1) via 1kΩ + schottky to 3.3V |
-| 4 | GND1 | Nucleo GND (logic ground) |
-| 5 | GND2 | Power stage GND (isolated) |
-| 6 | B2 | FREQ feedback screw terminal (+ 3.3V zener to GND2) |
-| 7 | B1 | FAULT input screw terminal (+ 3.3V zener to GND2) |
-| 8 | VDD2 | 5V driver rail + 100nF cap to GND2 |
+| 1 | VDD1 | 5V + 100nF (+ 10nF) cap to GND |
+| 2 | A1 | → BKIN to Nucleo (PB12) via JST Conn1 Orange |
+| 3 | A2 | → FREQ_FB to Nucleo (PA0) via JST Conn1 Green |
+| 4 | GND1 | Star ground |
+| 5 | GND2 | Star ground |
+| 6 | B2 | FREQ feedback IN ← 74HC14 output |
+| 7 | B1 | FAULT IN ← OCP comparator |
+| 8 | VDD2 | 5V + 100nF (+ 10nF) cap to GND |
 
 *Signal flows: B1→A1 (FAULT), B2→A2 (FREQ feedback)*
 
