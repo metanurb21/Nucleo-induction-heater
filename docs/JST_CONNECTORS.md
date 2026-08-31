@@ -16,16 +16,27 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 
 ## Connector 1 — Fast / Critical Signals
 
+> AS-BUILT: pins 1 (Black) and 2 (Red) are the Nucleo GND + 12V power feed, not
+> signals. PWM_A did NOT get a JST pin — it runs as a **separate flying wire**
+> from PA8 (CN10-23) directly to Si8621 #1 pin 2 (A1). Everything from White
+> onward is on the JST as listed. No off-by-one elsewhere; the rest is correct.
+
 | Pin | Color  | Signal   | Nucleo Pin | Function          | Morpho   | Direction      |
 |-----|--------|----------|------------|-------------------|----------|----------------|
-| 1   | Black  | PWM_A    | PA8        | TIM1_CH1          | CN10-23  | Nucleo → lower |
-| 2   | Red    | GND      | GND        | Ground (to star)  | CN7-20   | —              |
+| 1   | Black  | GND      | GND        | Nucleo ground     | —        | —              |
+| 2   | Red    | 12V      | VIN        | Nucleo 12V power feed | CN7-24 | lower → Nucleo |
 | 3   | White  | PWM_B    | PB13       | TIM1_CH1N         | CN10-30  | Nucleo → lower |
 | 4   | Yellow | GND      | GND        | Ground (to star)  | CN10-9   | —              |
 | 5   | Orange | BKIN     | PB12       | TIM1_BKIN         | CN10-16  | lower → Nucleo |
 | 6   | Green  | FREQ_FB  | PA0        | TIM2_CH1 (capture)| CN7-28   | lower → Nucleo |
 | 7   | Blue   | 3V3      | 3V3        | Si8621 logic-side ref (optional) | CN7-16 | Nucleo → lower |
 | 8   | Purple | GND      | GND        | Ground (to star)  | CN10-20  | —              |
+
+**PWM_A — separate flying wire (not on JST):**
+
+| Signal | Nucleo Pin | Morpho  | To | Notes |
+|--------|-----------|---------|----|-------|
+| PWM_A  | PA8       | CN10-23 | Si8621 #1 pin 2 (A1), via 100Ω series | Direct wire, top perf → lower perf |
 
 ## Connector 2 — Slow / Analog Signals
 
@@ -44,11 +55,15 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 
 ## Notes
 
-- **Single star ground:** All GND pins (Conn 1: Red/2, Yellow/4, Purple/8;
+- **AS-BUILT power:** Conn 1 Black (pin 1) = Nucleo GND, Red (pin 2) = 12V feed
+  up to Nucleo VIN. Single star ground — the Nucleo shares the lower board's
+  ground/power. (This supersedes the earlier "power Nucleo independently" idea;
+  the as-built is the shared single-ground arrangement.)
+- **Single star ground:** All GND pins (Conn 1: Black/1, Yellow/4, Purple/8;
   Conn 2: Green/6) tie to the one star-ground point on the lower board along
-  with the 5V/12V/15V returns. The Nucleo shares this ground. Simple and clean.
-- **Grounds by connector:** Conn 1 carries three grounds flanking the fast PWM
-  signals for tight return paths. Conn 2 has one ground for the analog returns.
+  with the 5V/12V/15V returns. Simple and clean.
+- **PWM_A flying wire:** PA8 → Si8621 #1 A1 runs as a direct wire, NOT on the
+  JST (Conn 1 pin 1 became GND). Keep it twisted with a ground return and short.
 - **3.3V (Conn 1, Blue/pin 7):** Nucleo's 3.3V — optional reference down to the
   isolator logic side. (Si8621 can run both sides from 5V; wire 3.3V only if you
   want the logic side at 3.3V to match Nucleo I/O levels exactly.)
