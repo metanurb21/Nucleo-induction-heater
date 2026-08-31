@@ -68,52 +68,56 @@ graph LR
     end
 ```
 
-## Power Distribution
+## Power Distribution (AS-BUILT — authoritative)
 
-**SINGLE STAR GROUND.** All grounds (Nucleo logic, 5V, 12V, 15V returns) tie
-together at one star point. The Si8621 chips act as fast signal buffers /
-level shifters rather than true galvanic isolators in this configuration —
-they still give clean edges and some noise rejection. Chosen for simplicity;
-revisit true isolation only if bench testing shows the MCU glitching under load.
+**SINGLE STAR GROUND, shared 12V input.** One 12V input feeds everything.
+It goes UP to the Nucleo VIN (via JST Conn1 Red) AND splits through an
+adjustable regulator board to make the 5V logic rail on the lower perf. The
+Nucleo's 3.3V comes back DOWN (JST Conn1 Blue) as a separate 3.3V supply for
+the lower perf where needed. The 15V gate-drive rail is a separate lower-perf
+rail. ALL grounds — 12V, 5V, 3.3V, 15V, Nucleo — meet at one star point.
 
-Noise control relies on: single star ground, twisted signal leads (done),
-and decoupling caps at every IC. The Nucleo runs from USB (bench) or a wall
-brick; its ground meets the lower board ground at the star point.
+The Si8621 chips act as fast signal buffers / level shifters (not true
+galvanic isolators in this single-ground config) — still clean edges + some
+noise rejection. Noise control: single star ground, twisted leads (done),
+decoupling at every IC.
 
 ```mermaid
 graph TD
-    WALL["12V Wallwart"] --> R12["12V RAIL"]
-    R12 --> STEP["5V Step-down board"]
-    STEP --> R5["5V RAIL"]
-    R5 --> V33["Nucleo 3.3V (from USB/brick reg)"]
+    IN12["12V INPUT"] -->|"JST Conn1 Red → VIN"| NUC["Nucleo (VIN 7-12V)"]
+    IN12 --> REG["Adjustable regulator board"]
+    REG --> R5["5V RAIL (lower perf logic)"]
 
-    R5 --> ISO_VDD1["Si8621 Vdd1 (logic side)"]
-    R5 --> ISO_VDD2["Si8621 Vdd2 (power side)"]
+    NUC --> V33["Nucleo 3.3V out"]
+    V33 -->|"JST Conn1 Blue → lower"| R33["3.3V supply (lower perf, where needed)"]
+
+    R5 --> ISO_VDD["Si8621 Vdd1 + Vdd2 (both chips)"]
     R5 --> HC14V["74HC14 VCC"]
     R5 --> RELAY["Relay coil (contactor opto)"]
-    V33 --> PULLUPS["Pull-ups + ADC ref"]
 
-    R12 --> STAR["★ SINGLE STAR GROUND ★"]
+    HV15["15V RAIL (separate lower-perf supply)"] --> IXDN["IXDN604 VCC"]
+
+    IN12 --> STAR["★ SINGLE STAR GROUND ★"]
     R5 --> STAR
-    HV15["15V supply"] --> STAR
+    V33 --> STAR
+    HV15 --> STAR
+    NUC --> STAR
 
-    R5 -.->|"100nF each"| ISO_VDD2
-    R5 -.->|"100nF each"| ISO_VDD1
+    R5 -.->|"100nF + 10nF each pin"| ISO_VDD
 ```
 
 **Rail summary (all share the single star ground):**
 
 | Rail | Source | Powers |
 |------|--------|--------|
-| Nucleo | USB or wall brick | Nucleo + its 3.3V regulator |
-| 3.3V | Nucleo onboard regulator | pull-ups, ADC ref |
-| 12V | Wallwart | 5V step-down input |
-| 5V | Step-down from 12V | Si8621 (both sides), 74HC14, relay coil |
-| 15V | Separate supply | IXDN604 VCC (gate drive) |
+| 12V | 12V input (shared) | Nucleo VIN (up JST Conn1 Red) + regulator input |
+| 5V | Adjustable regulator from 12V | Si8621 (both sides), 74HC14, relay coil |
+| 3.3V | Nucleo regulator (down JST Conn1 Blue) | Lower-perf 3.3V loads, pull-ups, ADC ref |
+| 15V | Separate lower-perf supply | IXDN604 VCC (gate drive) |
 
-> Si8621 GND1 (pin 4) and GND2 (pin 5) both tie to the single ground here.
-> Vdd1 (pin 1) and Vdd2 (pin 8) both go to 5V. The chip still buffers the
-> A↔B signals cleanly across pins.
+> Si8621: Vdd1 (pin 1) + Vdd2 (pin 8) → 5V; GND1 (pin 4) + GND2 (pin 5) → star
+> ground. The chip buffers A↔B signals cleanly across the (now-unused as a
+> barrier) isolation gap.
 
 ## Physical Layout (Stacked Perfboards)
 
@@ -176,15 +180,17 @@ block-beta
 2. PA8 → Si8621 #1 → PWM_A output connector
 3. PB13 → Si8621 #1 → PWM_B output connector
 
-### Power Routing
-- 12V wallwart → lower board 12V rail → up JST Conn1 (Red) to Nucleo VIN
-  (7–12V required; 5V will NOT run the Nucleo regulator)
-- 12V → adjustable step-down board → 5V rail → Si8621 Vdd2, 74HC14, relay coil
-- 3.3V from Nucleo → down JST Conn1 (Blue) → Si8621 Vdd1 (logic side) +
-  pull-ups + ADC reference
-- 15V separate supply → IXDN604 VCC
-- 100nF decoupling cap at EACH IC power pin
-- 100µF bulk cap near the 12V input and 10µF near each IXDN604
+### Power Routing (as-built)
+- 12V input → up JST Conn1 (Red) to Nucleo VIN (7–12V; 5V will NOT run the reg)
+- 12V input → adjustable regulator board → 5V rail → Si8621 (both sides),
+  74HC14, relay coil
+- Nucleo 3.3V → down JST Conn1 (Blue) → separate 3.3V supply on lower perf
+  where needed (+ pull-ups + ADC reference)
+- 15V separate lower-perf rail → IXDN604 VCC
+- ALL grounds → single star point (12V, 5V, 3.3V, 15V, Nucleo)
+- 100nF (+10nF) decoupling at EACH IC power pin
+- 100µF bulk near the 12V input, 10µF near each IXDN604, 47-100µF near the
+  Si8621/74HC14/relay cluster
 - Nucleo jumper on **E5V** when running from external 12V; **U5V** when on USB
 
 ### Si8621 Pinout (SOIC-8)
