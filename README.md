@@ -52,8 +52,9 @@ ESP32 work. The benefits that made it worth the learning curve:
 
 ## The plan (high level)
 
-1. Build the controller board — Nucleo on a custom shield with isolation,
-   gate drivers, feedback conditioning, display, and safety interlocks.
+1. Build the controller board — Nucleo on a stacked perfboard with signal
+   buffering, gate drivers, feedback conditioning, display, and safety
+   interlocks.
 2. Bring the firmware up in stages, verifying every signal on the scope before
    any power is applied.
 3. Close the PLL loop on the real tank circuit.
@@ -62,16 +63,24 @@ ESP32 work. The benefits that made it worth the learning curve:
 
 ## Status
 
-- Hardware: assembling the prototype board
-- Firmware: modular scaffold in place, needs bench validation
-- Everything here will change as the build progresses
+Control board coming together, firmware partly verified:
+
+- ✅ Board boots, TFT display, rotary encoder, temperature sensing all working
+- ✅ Gate-drive waveforms verified on the scope — complementary output with
+  adjustable hardware dead-time, frequency accurate to ~0.1%
+- 🔨 Wiring the signal buffers and gate drivers now
+- ⏳ Next: close the PLL loop on real tank feedback, then low-voltage gate drive
+- ⏳ Then: gradual full-power runs on the variac
+
+Everything here will change as the build progresses.
 
 ## Safety note
 
 This machine runs off mains power, switches hundreds of amps, and gets things
 hot enough to melt metal. It's built and operated with a lot of respect,
-isolation, layered protection, and a variac on the input. This repo documents a
-personal project — it is not a build guide, and high-voltage work is dangerous.
+layered protection, EMI filtering, and a variac on the input. This repo
+documents a personal project — it is not a build guide, and high-voltage work
+is dangerous.
 
 ## Related
 

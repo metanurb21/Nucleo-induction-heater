@@ -169,11 +169,14 @@ block-beta
 > Lesson learned: BLK/backlight must be wired (driven HIGH). Without it the
 > display appears completely dead even though SPI and logic are fine.
 
-### Isolation Boundary
-- **LEFT side** of board = isolated outputs (PWM to gate drivers)
-- **RIGHT side** of board = isolated inputs (fault + frequency feedback)
-- **CENTER** = Nucleo + UI (safe/logic side)
-- Ground planes: Logic GND and Power GND must NOT connect (isolation!)
+### Board Zones (single star ground — NOT an isolation barrier)
+- **Top perf** = Nucleo + UI (TFT, encoder, LEDs)
+- **Lower perf LEFT** = Si8621 #1 → IXDN604 outputs (PWM to gate drivers)
+- **Lower perf RIGHT** = Si8621 #2 inputs (fault + frequency feedback), 74HC14
+- **Lower perf BOTTOM** = power rails, relay/opto, terminals
+- **Ground: ONE star point.** All returns (12V, 5V, 3.3V, 15V, Nucleo) meet
+  there. The Si8621s buffer signals but do not form a ground barrier in this
+  build. Keep fast PWM routing away from analog sense routing.
 
 ### Critical Traces (keep short)
 1. FAULT input → Si8621 #2 → PB12 (fastest path on the board)
@@ -262,7 +265,7 @@ block-beta
 |-----|------|-----------|
 | 1 | VCC | 15V gate drive supply + 100nF ceramic + 10µF electrolytic to GND |
 | 2 | OUT | GDT primary winding leg A |
-| 3 | GND | Power stage GND (same as Si8621 GND2) |
+| 3 | GND | Star ground |
 | 4 | IN | Si8621 #1 pin 7 (B1) via 10kΩ pulldown to GND |
 | 5 | NC | No connection |
 
@@ -272,7 +275,7 @@ block-beta
 |-----|------|-----------|
 | 1 | VCC | 15V gate drive supply + 100nF ceramic + 10µF electrolytic to GND |
 | 2 | OUT | GDT primary winding leg B |
-| 3 | GND | Power stage GND (same as Si8621 GND2) |
+| 3 | GND | Star ground |
 | 4 | IN | Si8621 #1 pin 6 (B2) via 10kΩ pulldown to GND |
 | 5 | NC | No connection |
 
@@ -283,7 +286,7 @@ block-beta
 
 ```
               ┌──────────────┐
-         1A 1 ┤              ├ 14  VCC (5V power-side)
+         1A 1 ┤              ├ 14  VCC (5V rail)
          1Y 2 ┤              ├ 13  6A
          2A 3 ┤              ├ 12  6Y
          2Y 4 ┤   74HC14    ├ 11  5A
@@ -299,36 +302,34 @@ block-beta
 |-----|-----------|
 | 1 (1A input) | Junction of 10kΩ/15kΩ voltage divider from CT burden |
 | 2 (1Y output) | Si8621 #2 pin 6 (B2) — frequency feedback to Nucleo |
-| 7 (GND) | Power-side GND |
-| 14 (VCC) | 5V power-side rail + 100nF decoupling |
+| 7 (GND) | Star ground |
+| 14 (VCC) | 5V rail + 100nF decoupling |
 | 3,5,9,11,13 | Unused inputs tied to GND or VCC (prevent floating/oscillation) |
 
 *Note: 74HC14 is inverting — output is inverted relative to input.*
 *This doesn't affect the PLL since it measures frequency/period, not polarity.*
 
-### Power Rails on Combined PCB
+### Power Rails Summary (as-built)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                                                                    │
-│  [12V RAIL]      [3.3V RAIL]     [5V RAIL]        [15V RAIL]       │
-│  Wallwart        From Nucleo     From step-down   Gate drive       │
-│  → Nucleo VIN    Si8621 Vdd1     Si8621 Vdd2      IXDN604 VCC      │
-│  → 5V step-down  Pull-ups        74HC14 VCC       (separate        │
-│                  ADC ref         Relay coil        supply)         │
+│  [12V RAIL]        [5V RAIL]        [3.3V RAIL]     [15V RAIL]     │
+│  12V input         From adj. reg    From Nucleo     Separate       │
+│  → Nucleo VIN      Si8621 Vdd1+2    (down JST)      lower-perf     │
+│  → adj. regulator  74HC14 VCC       Lower-perf      supply         │
+│                    Relay coil       3.3V loads      IXDN604 VCC    │
+│                                     Pull-ups/ADCref                │
 │                                                                    │
-│  [LOGIC GND]                     [POWER GND ─────── POWER GND]     │
-│  Nucleo side                     Si8621 side 2 / 74HC14 / relay    │
-│                                  / IXDN side                       │
-│                                                                    │
-│  ════ ISOLATION BARRIER (no connection between L/P grounds) ════   │
+│         ★★★  ALL RETURNS → SINGLE STAR GROUND  ★★★                 │
+│         (12V, 5V, 3.3V, 15V, Nucleo — one point)                   │
 │                                                                    │
 └──────────────────────────────────────────────────────────────────┘
 
 Notes:
 - Nucleo VIN needs 7-12V; it runs from the 12V rail, NOT 5V.
-- 5V and 15V share POWER GND (same side of the isolation barrier).
-- The 12V rail and its derived 5V also sit on the power-side domain;
-  only the Nucleo's LOGIC GND is isolated from POWER GND (via Si8621).
-- The Nucleo's 3.3V (logic side) crosses DOWN to Si8621 Vdd1 only.
+- Si8621: Vdd1 AND Vdd2 both → 5V. GND1 AND GND2 both → star ground.
+- Nucleo 3.3V goes DOWN the JST as a separate lower-perf supply.
+- No isolation barrier in this build — the Si8621s are signal buffers.
+  Noise control = star ground + twisted leads + decoupling.
 ```

@@ -62,12 +62,15 @@ graph LR
 
 Priority order — fastest action first:
 
-1. **Kill PWM** — TIM1 BKIN fires (hardware, ~6ns) OR firmware sets TIM1 outputs OFF
-2. **Inhibit VCO** (if PLL mode) — GPIO HIGH kills oscillator
-3. **Drop contactor** — GPIO LOW → opto off → relay off → contactor drops → H-bridge de-energized
-4. **Log fault** — record reason (OCP/temp/manual) for display
+1. **Kill PWM** — TIM1 BKIN fires (hardware, ~6ns) OR firmware clears MOE
+   (`PwmDrive::disableOutputs()`)
+2. **Drop contactor** — GPIO LOW → opto off → relay off → contactor drops → H-bridge de-energized
+3. **Log fault** — record reason (OCP/temp/mains/manual) for display
 
-Note: Steps 1-3 happen in microseconds (firmware-driven). The contactor physically
+> (No VCO inhibit step — that was the old ESP32/CD4046 analog-PLL design.
+> The STM32 generates the PWM directly, so killing TIM1 output IS the kill.)
+
+Note: Steps 1-2 happen in microseconds (firmware-driven). The contactor physically
 opens in ~10-20ms (mechanical delay), but the PWM is already dead so IGBTs stop
 switching immediately. The contactor just removes bus power as a secondary safety.
 
@@ -100,15 +103,18 @@ switching immediately. The contactor just removes bus power as a secondary safet
 
 ## Pin Assignment
 
-| Function | Nucleo Pin | Notes |
-|----------|-----------|-------|
-| Contactor control | PB14 | GPIO output → opto LED → relay → contactor |
-| AC sense (zero-cross) | PA4 (ADC1_IN4) | Or any free ADC — reads scaled AC waveform |
+| Function | Nucleo Pin | Morpho | Notes |
+|----------|-----------|--------|-------|
+| Contactor control | PB14 (GPIO) | CN10-28 | → opto LED → relay → contactor. JST Conn2 Orange |
+| AC sense (zero-cross) | **PC1 (ADC1_IN11)** | CN7-36 | Reads scaled rectified AC. JST Conn2 White |
+
+> Note: PA4 is ADC_VBUS (bus voltage), NOT the AC sense. AC sense is PC1.
+> Matches `PIN_ADC_AC` in `config.h`.
 
 ## Physical Notes
 
-- The relay, optocoupler, and flyback diode mount on the **power side** of the PCB
-  (same ground domain as Si8621 side 2, IXDN604, 74HC14)
+- The relay, optocoupler, and flyback diode mount on the **lower perf** with the
+  Si8621 / IXDN604 / 74HC14 (all share the single star ground)
 - The 120V wiring to/from the relay contacts should use proper gauge wire and
   be physically separated from all low-voltage traces
 - The isolation transformer can be chassis-mounted off-board with wires to the PCB

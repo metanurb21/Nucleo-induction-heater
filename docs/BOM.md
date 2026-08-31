@@ -2,7 +2,8 @@
 
 Digital PLL controller for induction heater using STM32 Nucleo-F446RE.
 TIM1 complementary PWM with hardware dead-time and break input.
-Galvanically isolated signal path between controller and power stage.
+Si8621 digital isolators buffer the signal path (single star ground build —
+see `SHIELD_LAYOUT.md` for the as-built power tree).
 
 ---
 
@@ -50,10 +51,11 @@ Galvanically isolated signal path between controller and power stage.
 | 2 | Capacitor | 10nF ceramic | Through-hole | RC filter cap on OCP + AC sense ADC inputs | Kills switching pickup on analog lines |
 | 1 | Capacitor | 47-100uF electrolytic | Through-hole | Bulk reservoir on 5V near Si8621/74HC14/relay | Handles relay coil inrush |
 
-> Power (single star ground): Nucleo runs from USB or its own wall brick.
-> Si8621 can run both sides from the 5V rail; wire Nucleo 3.3V to the logic
-> side only if you want it at 3.3V to match Nucleo I/O levels. All grounds
-> meet at the single star point.
+> Power (AS-BUILT, single star ground): one 12V input feeds the Nucleo VIN
+> (up JST Conn1 Red) AND an adjustable regulator that makes the 5V logic rail.
+> Nucleo 3.3V comes back down (JST Conn1 Blue). 15V is a separate lower-perf
+> rail for gate drive. Si8621 runs both Vdd1 and Vdd2 from 5V. All grounds meet
+> at the single star point. See `SHIELD_LAYOUT.md`.
 
 ## User Interface
 
@@ -82,8 +84,10 @@ Galvanically isolated signal path between controller and power stage.
 
 | Qty | Part | Value/Type | Package | Purpose | Notes |
 |-----|------|-----------|---------|---------|-------|
-| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | 5V power input | |
+| 1 | Screw terminal | 2-pos 5.08mm | Through-hole | 12V power input | Feeds Nucleo VIN + 5V regulator |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | 15V power input | Gate drive supply |
+| 1 | Adjustable step-down module | e.g. LM2596 buck | Module | 12V → 5V logic rail | Set to 5.0V |
+| 2 | JST connector | 8-pin, 2.54mm | Through-hole | Inter-board (top ↔ lower perf) | See `JST_CONNECTORS.md` |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | GDT output leg A | To GDT primary |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | GDT output leg B | To GDT primary |
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | FAULT input (from OCP comparator) | |
@@ -91,7 +95,7 @@ Galvanically isolated signal path between controller and power stage.
 | 1 | Screw terminal | 2-pos 5.08mm | Through-hole | NTC thermistor | |
 | 1 | Pin header male | 8-pin 2.54mm | Through-hole | TFT module connector | |
 
-## Frequency Feedback Signal Conditioning (power-side, before Si8621 #2)
+## Frequency Feedback Signal Conditioning (before Si8621 #2)
 
 | Qty | Part | Value/Type | Package | Purpose | Notes |
 |-----|------|-----------|---------|---------|-------|
@@ -100,7 +104,7 @@ Galvanically isolated signal path between controller and power stage.
 | 1 | Resistor | 15kΩ 1/4W | Through-hole | Voltage divider lower (HC14 input → GND) | |
 | 1 | Capacitor | 100nF ceramic | Through-hole | 74HC14 VCC decoupling | Close to pin 14 |
 
-## Gate Driver Section (15V rail, power-side GND)
+## Gate Driver Section (15V rail, star ground)
 
 | Qty | Part | Value/Type | Package | Purpose | Notes |
 |-----|------|-----------|---------|---------|-------|
@@ -128,6 +132,8 @@ Galvanically isolated signal path between controller and power stage.
 | ADC_OCP | PA1 | ADC1_IN1 | CN7 pin 30 |
 | ADC_VBUS | PA4 | ADC1_IN4 | CN7 pin 32 |
 | ADC_NTC | PC0 | ADC1_IN10 | CN7 pin 38 |
+| ADC_AC (mains sense) | PC1 | ADC1_IN11 | CN7 pin 36 |
+| CONTACTOR | PB14 | GPIO | CN10 pin 28 |
 | ENC_A | PB4 | TIM3_CH1 | CN10 pin 27 |
 | ENC_B | PB5 | TIM3_CH2 | CN10 pin 29 |
 | ENC_BTN | PC13 | GPIO (EXTI) | CN7 pin 23 |
@@ -136,21 +142,28 @@ Galvanically isolated signal path between controller and power stage.
 | TFT_CS | PB6 | GPIO | CN10 pin 17 |
 | TFT_DC | PC7 | GPIO | CN10 pin 19 |
 | TFT_RST | PA9 | GPIO | CN10 pin 21 |
+| TFT_BLK (backlight) | PB2 | GPIO | CN10 pin 22 |
 | STATUS_LED | PB0 | GPIO | CN7 pin 34 |
-| FAULT_LED | PB1 | GPIO | CN7 pin 7 |
+| FAULT_LED | PB1 | GPIO | CN10 pin 24 |
 
 ---
 
-## Order Priority
+## Procurement Status
 
-**Likely need to order:**
-- 2x Si8621BB-B-IS or ADUM1201 isolators (or breakout boards)
-- 4x 3.3V TVS diodes (if not in stock)
-- 2x 38-pin female headers (Nucleo morpho)
+**Received / in hand:**
+- Nucleo-F446RE, 2x38 morpho headers (soldered)
+- 2x Si8621BB-B-IS (mounted on ADuM1201-style breakouts, decoupling + HF caps on)
+- 2x IXDN604 gate drivers
+- NTC thermistor (wired, verified reading correctly)
+- TFT display (wired, verified working)
+- Rotary encoder + button (wired, verified working)
+- 74HC14, resistors, caps, LEDs, terminals, JSTs, perfboard
+- 15V 10A rail, 12V input, adjustable 5V regulator board
 
-**Likely have in stock:**
-- Resistors, capacitors, LEDs
-- Rotary encoder, TFT display, buttons
-- Screw terminals, pin headers, wire
-- NTC thermistor
-- Perfboard
+**On order:**
+- Mains EMI filter (YS36Q1AN-50A type) — ETA Sept 8. System/enclosure part,
+  only needed for Phase 5 full-power runs.
+
+> Note on the ADuM1201 breakouts: the breakout silkscreen labels do NOT match
+> the Si8621 pinout. Wire by physical pin number using the Si8621 pinout in
+> `SHIELD_LAYOUT.md`, not the board's printing.

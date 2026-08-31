@@ -2,11 +2,11 @@
 
 Modular firmware for the STM32 Nucleo F446RE induction heater PLL controller.
 
-> **STATUS: SCAFFOLD.** This is a first-pass structure generated before the
-> hardware was wired. The register-level timer/ADC code and pin alternate
-> functions **must be validated on the Analog Discovery 3 (AD3) before any
-> power stage is connected.** Bring it up in the phases below. Do NOT jump
-> straight to driving IGBTs.
+> **STATUS: Phases 1–2 verified on hardware.** Boots clean at 180MHz, TIM1
+> complementary PWM + hardware dead-time confirmed on the AD3 and calibrated.
+> TFT, encoder, NTC sensing, and the state machine all verified working.
+> Remaining: PLL loop closure (Phase 3), gate drive (Phase 4), full power
+> (Phase 5). Do NOT jump straight to driving IGBTs.
 
 ---
 
@@ -52,7 +52,9 @@ Modules never call StateManager (no upward calls). Display only reads.
 | TIM2 | PllControl | Input capture (PA0) for frequency measurement |
 | TIM3 | Encoder | Quadrature decode (PB4/PB5) |
 | ADC1 | Sensing | OCP (PA1), Vbus (PA4), NTC (PC0), AC sense (PC1) |
-| SPI (soft) | Display | ST7735 TFT (PA5/PA7 + control) |
+| SPI (soft) | Display | ST7735 TFT — PA5 SCK, PA7 MOSI, PB6 CS, PC7 DC, PA9 RST, **PB2 BLK** |
+| GPIO | MainsControl | Contactor (PB14) |
+| GPIO | StateManager | Status LED (PB0), Fault LED (PB1) |
 | USART2 | Serial | ST-Link VCP console (PA2/PA3) |
 
 ---
@@ -83,18 +85,27 @@ Work through these IN ORDER. Do not connect the power stage until Phase 4.
 Blink + serial + button. Verified toolchain, upload, serial.
 Reference: `docs/phase1_blink_reference.cpp`.
 
-### Phase 2 — PWM generation (NO power stage)
-- Flash the full firmware. In `setup()` it stays IDLE (safe).
-- **Temporarily** force `PwmDrive::enableOutputs()` + a fixed frequency in a
-  test sketch, OR trigger START with the encoder button.
-- Probe PA8 and PB13 on the **AD3**:
-  - Confirm two complementary square waves
-  - Confirm frequency matches `PWM_FREQ_START_HZ` (measure period)
-  - **Confirm dead-time** between the falling edge of one and rising edge of
-    the other. Verify `setDeadTimeNs()` actually changes it.
-- Sweep `setFrequency()` across 50–100 kHz, confirm range and resolution.
-- ⚠️ Validate the TIM1 register setup and PA8/PB13/PB12 AF numbers against
-  the F446RE datasheet (Table 11). This is the #1 thing to verify.
+### Phase 2 — PWM generation ✅ (done, AD3-verified)
+Use the dedicated test env: `pio run -e pwm_test -t upload`. It bypasses the
+state machine and drives PWM immediately, with live serial commands
+(`f<hz>`, `d<ns>`, `e`, `x`, `?`) for tuning while scoping.
+
+Results on the AD3 (probing PA8 / PB13):
+- ✅ Complementary square waves confirmed
+- ✅ **Clock calibrated:** actual TIM1 clock measured at **184 MHz** (not the
+  assumed 180). `TIM1_CLOCK_HZ` updated. Post-calibration: commanded 80 kHz
+  reads 80.023 kHz (0.03% err), 50 kHz reads 49.947 kHz (0.11% err).
+- ✅ **Hardware dead-time confirmed and adjustable** (300 ns cmd → ~278 ns
+  pre-calibration, tracked linearly; 500 ns → ~470 ns). Accurate post-cal.
+- ✅ Clean 3.3V logic edges (~53 ns rise/fall, low overshoot)
+
+### Phase 2b — UI + sensing ✅ (done)
+- ✅ TFT renders splash / idle / running / fault (note: **BLK backlight pin
+  PB2 must be wired** or the screen appears dead)
+- ✅ Encoder button: start / stop / reset-fault all working
+- ✅ Encoder rotation adjusts frequency live
+- ✅ NTC reads accurate room temp, responds to finger warmth / breath
+- ✅ State machine transitions verified end-to-end
 
 ### Phase 3 — Feedback + UI (NO power stage)
 - Feed a signal generator (AD3) square wave into the FREQ_FB path (PA0,
@@ -119,11 +130,19 @@ Reference: `docs/phase1_blink_reference.cpp`.
 
 ---
 
-## Known TODOs / Iteration Notes (next month)
+## Resolved during bring-up
 
-- **Validate all register-level code** (TIM1/TIM2/TIM3 setup, AF numbers).
-  The Arduino STM32 core may also want to own some of these timers — check
-  for conflicts (e.g., TIM based `micros()`), remap if needed.
+- ✅ **TIM2 IRQ collision** — the Arduino STM32 core already defines
+  `TIM2_IRQHandler`, which caused a multiple-definition link error against our
+  hand-rolled ISR. Fixed by using the core's `HardwareTimer` input-capture
+  callback API in `PllControl` instead of a raw ISR.
+- ✅ **TIM1 register setup + AF numbers validated** on hardware (PWM and
+  dead-time both confirmed on the AD3). TIM3 encoder mode also working.
+- ✅ **Clock constant calibrated** — `TIM1_CLOCK_HZ` corrected 180 → 184 MHz
+  from scope measurements.
+
+## Known TODOs / Iteration Notes
+
 - **Encoder mode cycling** — currently `s_encMode` is fixed to FREQUENCY.
   Add long-press or a second button to cycle FREQ/DETUNE/DEADTIME/OCP.
 - **Bus voltage scaling** — `Sensing::readBusRaw()` returns raw ADC; add the
@@ -139,16 +158,30 @@ Reference: `docs/phase1_blink_reference.cpp`.
   won't self-start at `PWM_FREQ_START_HZ`.
 - **Watchdog** — enable the STM32 IWDG so a firmware hang forces a reset
   (outputs go safe). Not yet wired up.
+- **Mains-present robustness** — `Sensing::mainsPresent()` currently returns
+  true if ANY sample exceeds threshold, so a *floating* ADC pin can falsely
+  read "MAINS: OK". Better: require the signal to actually vary (a rectified
+  sine wiggles; a floating/stuck pin doesn't) so the safe default is "no mains".
 
 ---
 
 ## Build & Upload
 
+Two environments:
+
 ```
-pio run                 # compile
-pio run -t upload       # flash (mbed: copies to /Volumes/NOD_F446RE)
+# Normal firmware (state machine, boots safe to IDLE)
+pio run -e nucleo_f446re -t upload
+
+# PWM bench test mode (drives PWM immediately, serial f/d/e/x/? commands)
+pio run -e pwm_test -t upload
+
 pio device monitor      # serial console @ 115200
 ```
+
+`upload_protocol = mbed` copies `firmware.bin` to `/Volumes/NOD_F446RE`.
+Note the normal firmware does NOT drive PWM until started; `pwm_test` does NOT
+init the TFT. Flash whichever matches what you're testing.
 
 The "Disk not ejected properly" macOS warning on upload is normal for the
 mbed/mass-storage flashing method — the board resets after receiving firmware.

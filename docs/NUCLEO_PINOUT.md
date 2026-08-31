@@ -157,7 +157,9 @@ Odd pins = left column, even pins = right column.
 | TFT_CS | PB6 | CN10 pin 17 | D10 |
 | TFT_DC | PC7 | CN10 pin 19 | D9 |
 | TFT_RST | PA9 | CN10 pin 21 | D8 |
+| TFT_BLK (backlight) | PB2 | CN10 pin 22 | - |
 | STATUS_LED | PB0 | CN7 pin 34 | A3 |
+| FAULT_LED | PB1 | CN10 pin 24 | - |
 | CONTACTOR | PB14 | CN10 pin 28 | - |
 
 ## Pins to AVOID
