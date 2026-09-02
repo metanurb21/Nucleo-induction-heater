@@ -116,8 +116,28 @@ namespace PwmDrive
 
         // Enable CH1 (CC1E) and complementary CH1N (CC1NE)
         TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC1NE;
-        // Active-high polarity on both (adjust if gate logic inverts)
-        TIM1->CCER &= ~(TIM_CCER_CC1P | TIM_CCER_CC1NP);
+
+        // ---- Polarity: INVERTED to compensate for the IRLB8721 ----
+        // level-shift circuit (Board v2). Each PWM channel passes through
+        // an IRLB8721 MOSFET (gate <- PA8/PB13, drain -> 5V via pull-up,
+        // source -> GND) to shift 3.3V logic to 5V for the IXDN604. That
+        // circuit is inverting: Nucleo LOW -> MOSFET off -> drain pulled to
+        // 5V (HIGH); Nucleo HIGH -> MOSFET on -> drain pulled to GND (LOW).
+        //
+        // Dead-time is generated on the internal reference waveform BEFORE
+        // the CCxP/CCxNP polarity bit is applied. During the dead-time gap
+        // (both channels "inactive"), with CCxP=0 both Nucleo pins would go
+        // LOW -> through the inverting MOSFET level-shift both IXDN604
+        // inputs would go HIGH -> BOTH GATE DRIVERS ON during dead-time.
+        // That is backwards and dangerous (shoot-through risk instead of
+        // protection). Inverting CC1P + CC1NP here makes both Nucleo pins
+        // go HIGH during the gap -> through the MOSFETs both IXDN604 inputs
+        // go LOW -> both drivers OFF during dead-time, which is correct.
+        // Outside the gap, the double-inversion (here + MOSFET) cancels out
+        // and the complementary PWM relationship is preserved normally.
+        //
+        // See docs/BOARD_V2_DIRECT.md for the full level-shift circuit.
+        TIM1->CCER |= (TIM_CCER_CC1P | TIM_CCER_CC1NP);
 
         // ---- Dead-time + break (BDTR) ----
         uint32_t bdtr = 0;

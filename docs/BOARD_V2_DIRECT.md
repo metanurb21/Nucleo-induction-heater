@@ -17,55 +17,69 @@ function).
 
 ---
 
-## PWM Output Path (Nucleo → 74HCT14 → IXDN604 → GDT)
+## PWM Output Path (Nucleo → IRLB8721 level-shift → IXDN604 → GDT)
+
+**FINAL: using IRLB8721 MOSFET level-shifters, not the 74HCT14.** No HCT part
+in stock, and the IRLB8721 is a logic-level MOSFET (Vgs-th ~1-2V, drives
+cleanly from 3.3V) already in the parts drawer. TO-220 package is also much
+easier to hand-solder reliably than another DIP-14 — see the whole isolator
+saga this design replaces.
 
 ```mermaid
 graph LR
-    PA8["PA8 (TIM1_CH1)"] -->|"100Ω, short trace"| HCT1["74HCT14<br/>Gate 1 IN"]
-    PB13["PB13 (TIM1_CH1N)"] -->|"100Ω, short trace"| HCT2["74HCT14<br/>Gate 2 IN"]
-    HCT1 -->|"~5V out"| IXDN1["IXDN604 #1<br/>IN (pin 4)"]
-    HCT2 -->|"~5V out"| IXDN2["IXDN604 #2<br/>IN (pin 4)"]
+    PA8["PA8 (TIM1_CH1)<br/>3.3V logic"] -->|"short trace"| Q1G["IRLB8721 #1<br/>Gate"]
+    PB13["PB13 (TIM1_CH1N)<br/>3.3V logic"] -->|"short trace"| Q2G["IRLB8721 #2<br/>Gate"]
+
+    V5A["5V"] -->|"10kΩ pull-up"| Q1D["IRLB8721 #1<br/>Drain (output node)"]
+    V5B["5V"] -->|"10kΩ pull-up"| Q2D["IRLB8721 #2<br/>Drain (output node)"]
+
+    Q1D -->|"10kΩ pulldown"| IXDN1["IXDN604 #1<br/>IN (pin 4)"]
+    Q2D -->|"10kΩ pulldown"| IXDN2["IXDN604 #2<br/>IN (pin 4)"]
+
+    Q1S["IRLB8721 #1 Source"] --> GND1["GND"]
+    Q2S["IRLB8721 #2 Source"] --> GND2["GND"]
+
     IXDN1 -->|"OUT (pin 2)"| GDT1["GDT Primary A"]
     IXDN2 -->|"OUT (pin 2)"| GDT2["GDT Primary B"]
 ```
 
-> **Need SN74HCT14N (TI) for this level-shift — NOT the SN74HC14N you have on
-> hand.** IXDN630MCI needs VIH=3.5V min. The genuine TI SN74HC14N at
-> VCC=4.5-5V has VIH≈3.15-3.5V (0.7×VCC, CMOS-level) — a 3.3V input from the
-> Nucleo is marginal/out-of-spec against that. The SN74HCT14N has
-> TTL-compatible inputs, VIH=2.0V FIXED regardless of VCC, so 3.3V clears it
-> with real margin. Pin-compatible drop-in, same DIP-14 footprint.
+**Per-channel circuit (×2, one per PWM signal):**
+
+| MOSFET pin | Connects to |
+|-----------|-------------|
+| Gate | Nucleo PA8 or PB13 (3.3V logic), directly, short trace |
+| Source | Ground |
+| Drain | 10kΩ pull-up to 5V **=** the level-shifted output node → to IXDN604 IN |
+
+> **⚠️ THIS CIRCUIT INVERTS THE SIGNAL.** MOSFET off (gate low) → drain pulled
+> to 5V (HIGH). MOSFET on (gate high) → drain pulled to GND (LOW). So Nucleo
+> LOW → IXDN604 sees HIGH, and Nucleo HIGH → IXDN604 sees LOW.
 >
-> **STATUS: only SN74HC14N confirmed in parts drawer. SN74HCT14N needs to be
-> sourced (Mouser/Digikey) or an alternative found — see options below.**
+> **Firmware compensates by flipping TIM1 CCER polarity bits** (`CC1P`/`CC1NP`)
+> in `PwmDrive::init()` so the Nucleo pins output pre-inverted logic, which
+> this circuit un-inverts back to correct polarity at the IXDN604. Complementary
+> relationship between the two channels is preserved either way (invert both).
+> **TODO: apply this firmware change before first power-up of this path.**
 >
-> 10kΩ pulldown stays on each IXDN604 input (fail-safe if this gate's output
-> is ever disconnected).
+> 10kΩ pulldown stays on each IXDN604 input (fail-safe if a MOSFET drain node
+> is ever disconnected — pulls IXDN604 input low = gate off, safe default).
 
-### Options until the HCT part arrives
+**Speed note:** IRLB8721 typical turn-on/off ~2-4ns (fast) but the RC formed
+by the 10kΩ pull-up and MOSFET/wiring capacitance dominates actual rise time
+— expect tens of ns, similar order to what was measured through the Si8621
+in earlier testing. Verify on the AD3 once built; if rise time eats too much
+into the 300ns dead-time budget, drop the pull-up to 4.7kΩ or lower (faster
+RC, more current draw — fine at this scale).
 
-1. **Order SN74HCT14N** — cheap, few dollars, same footprint as what you
-   already have wired experience with. Cleanest long-term fix.
-2. **Run the SN74HC14N you have from a LOWER VCC** — HC-family VIH scales
-   with VCC (VIH=0.7×VCC). At VCC=3.3V, VIH≈2.3V, comfortably below your
-   Nucleo's 3.3V output. BUT the chip's OUTPUT then only swings to ~3.3V,
-   which is BELOW the IXDN630's VIH=3.5V — same problem, just moved to the
-   output side. **This does not work** — don't use this option.
-3. **Bench-test the HC14 you have anyway, at 5V, with the 3.3V input** — HC
-   parts often still switch correctly with a 3.3V input even though it's
-   below the datasheet-guaranteed VIH, because real silicon has margin beyond
-   worst-case spec. You could verify on the AD3: feed 3.3V logic in, confirm
-   clean 5V square wave out, check propagation delay/edges look normal. If it
-   works reliably, it MIGHT be usable — but you're now relying on unspecified
-   margin rather than a guaranteed threshold, which is risky right next to
-   IGBTs. Not recommended for anything beyond a quick bench check.
-4. **Any other TTL-input buffer/gate you have** — 74LS14, 4050/4049 (CMOS
-   buffer with wide input tolerance), or a simple 2N7000 MOSFET level-shift
-   circuit would also work if something's in the drawer already.
+### Other parts considered, not used
 
-**Recommendation: order the SN74HCT14N.** It's inexpensive and removes the
-ambiguity entirely — same lesson as the isolator debug: don't build on
-marginal specs next to a 400A inverter.
+- SN74HCT14N — correct electrical fit (VIH=2.0V fixed) but not in stock
+- SN74HC14N (the one in stock) — VIH scales with VCC, marginal at 3.3V input,
+  same issue as feeding IXDN604 directly. Not used for this path.
+- IRF840 / IRF3710 / generic IRF**N — standard threshold (~4V), won't fully
+  turn on from 3.3V gate drive. Not suitable.
+- SCT2450KE — SiC power MOSFET, wrong threshold and wildly overkill. Not suitable.
+- TL494CN — PWM controller IC, not a level-shifter. Wrong tool for this job.
 
 ## Feedback / Fault Path (Power stage → Nucleo)
 
@@ -109,8 +123,9 @@ graph LR
 ```mermaid
 graph TD
     IN12["12V INPUT"] --> NUC["Nucleo VIN (7-12V)"]
-    IN5["5V INPUT"] --> HCT["74HCT14 VCC"]
-    IN5 --> HC["74HC14 VCC (3.3V — see note above, not 5V!)"]
+    IN5["5V INPUT"] --> Q["IRLB8721 x2 pull-ups (10kΩ to 5V)"]
+    NUC --> V33["Nucleo 3.3V out"]
+    V33 --> HC["SN74HC14N VCC (CT conditioner — 3.3V, NOT 5V)"]
     IN15["15V (existing separate rail)"] --> IXDN["IXDN604 VCC (both)"]
 
     IN12 --> STAR["★ SHARED GROUND ★"]
@@ -119,19 +134,18 @@ graph TD
     NUC --> STAR
 ```
 
-> Correction to the note above: if 74HC14 runs from 3.3V, source that 3.3V
-> from the Nucleo's own regulator output (short trace), not the 5V input rail.
-> So really: **12V → Nucleo VIN**, **5V → 74HCT14 + IXDN604 logic-adjacent
-> needs**, **Nucleo 3.3V → 74HC14 VCC**, **15V (separate, existing) → IXDN604
-> VCC**, all sharing one ground.
+> **12V → Nucleo VIN.** **5V → IRLB8721 pull-up resistors** (this is the only
+> thing 5V powers now — the level-shift is passive, not chip-based).
+> **Nucleo 3.3V → SN74HC14N VCC** (CT conditioner, must stay off 5V to protect
+> PA0). **15V (separate, existing) → IXDN604 VCC.** All sharing one ground.
 
 **Rail summary:**
 
 | Rail | Source | Powers |
 |------|--------|--------|
 | 12V | Board input | Nucleo VIN |
-| 5V | Board input | 74HCT14 VCC |
-| 3.3V | Nucleo onboard regulator | 74HC14 VCC (CT conditioner), pull-ups |
+| 5V | Board input | IRLB8721 x2 pull-up resistors (level-shift reference) |
+| 3.3V | Nucleo onboard regulator | SN74HC14N VCC (CT conditioner), pull-ups |
 | 15V | Existing separate rail | IXDN604 VCC (gate drive) |
 
 ---
@@ -144,10 +158,10 @@ graph TD
 - TVS diodes / Schottky clamps that were part of the isolator input protection
 
 **Added:**
-- 1x **SN74HCT14N** (TI, DIP-14) — PWM level-shift, 2 gates used (4 spare).
-  **NEEDS TO BE ORDERED** — only the HC (not HCT) variant is in the parts
-  drawer. See options in the PWM path section above if you want a bench
-  workaround while waiting on shipping.
+- 2x **IRLB8721** (logic-level N-MOSFET, TO-220) — PWM level-shift, one per
+  channel. **In parts drawer, confirmed, no order needed.**
+- 2x 10kΩ pull-up resistors (MOSFET drain → 5V, forms the level-shift output)
+- 2x 10kΩ pulldown resistors (level-shift output → IXDN604 IN, fail-safe)
 - 1x pull-up resistor (10kΩ to 3.3V) on BKIN, temporary until OCP comparator exists
 
 **Unchanged:**
@@ -155,28 +169,30 @@ graph TD
   VCC from 5V to 3.3V (see feedback path note above)
 - IXDN604 x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
 
-> Two different 74x14 parts in this design, same DIP-14 pinout, different
-> logic families — **do not mix them up on the bench once both are in hand.**
-> SN74HCT14N = PWM level-shift (near the IXDN604s), ORDER THIS ONE.
-> SN74HC14N = CT feedback conditioner (near the frequency sense input),
-> already in the parts drawer. Consider labeling both physically once the
-> HCT part arrives.
+**No longer needed (was going to order, now unnecessary):**
+- SN74HCT14N — replaced by the IRLB8721 level-shift circuit
 
 ## Physical Layout Notes
 
 - Nucleo morpho headers (CN7/CN10) soldered directly to the new perfboard —
   no cables between Nucleo and driver components
-- Keep PA8/PB13 → 74HCT14 traces as short as physically possible (this was
-  the exact class of problem that caused the v1 debug session)
-- 74HCT14 and IXDN604s clustered close together, short traces between them too
+- Keep PA8/PB13 → IRLB8721 gate traces as short as physically possible (this
+  was the exact class of problem that caused the v1 debug session)
+- IRLB8721s and IXDN604s clustered close together, short traces between them
+- TO-220 packages are easy to hand-solder reliably — much less risk than the
+  SOIC-8 isolators that caused the v1 rework
 - TFT + encoder can stay on longer leads (low-speed, non-critical signals)
 - Single ground — no star-point complexity needed for a one-board design,
   just a solid ground plane/bus
 
 ## Still TODO on this design
 
-- Confirm CT divider values still work with 74HC14 at 3.3V VCC (was sized
+- **Firmware: flip TIM1 CCER polarity bits (`CC1P`/`CC1NP`) in `PwmDrive::init()`**
+  to compensate for the IRLB8721 level-shift inversion. Do this BEFORE first
+  power-up of this path.
+- Confirm CT divider values still work with SN74HC14N at 3.3V VCC (was sized
   assuming 5V thresholds)
 - Design/wire the OCP comparator (currently just a 3.3V pull-up placeholder
   on BKIN)
-- Verify 74HCT14 availability (you may need to order — check stock first)
+- Verify on AD3: rise/fall time through the IRLB8721 level-shift, confirm
+  dead-time survives intact (same check as was done for the Si8621 in v1)
