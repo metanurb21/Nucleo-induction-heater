@@ -29,11 +29,14 @@ graph LR
     IXDN2 -->|"OUT (pin 2)"| GDT2["GDT Primary B"]
 ```
 
-> **Use 74HCT14, NOT 74HC14, for this level-shift.** IXDN630MCI needs VIH=3.5V.
-> Standard 74HC14 at 5V VCC has VIH=0.7×VCC=3.5V — marginal against a 3.3V
-> input, same problem as driving the IXDN604 directly. 74HCT14 has a fixed
-> VIH=2.0V (TTL-compatible), so 3.3V clears it cleanly. 10kΩ pulldown stays on
-> each IXDN604 input (fail-safe if the 74HCT14 output is ever disconnected).
+> **Use SN74HCT14N (TI), NOT the SN74HC14N, for this level-shift.** IXDN630MCI
+> needs VIH=3.5V min. The genuine TI SN74HC14N at VCC=4.5-5V has VIH≈3.15-3.5V
+> (0.7×VCC, CMOS-level) — a 3.3V input from the Nucleo is marginal/out-of-spec
+> against that. The SN74HCT14N has TTL-compatible inputs, VIH=2.0V FIXED
+> regardless of VCC, so 3.3V clears it with real margin. Pin-compatible
+> drop-in, same DIP-14 footprint. **Confirmed in parts drawer — no order
+> needed.** 10kΩ pulldown stays on each IXDN604 input (fail-safe if the
+> 74HCT14 output is ever disconnected).
 
 ## Feedback / Fault Path (Power stage → Nucleo)
 
@@ -112,12 +115,19 @@ graph TD
 - TVS diodes / Schottky clamps that were part of the isolator input protection
 
 **Added:**
-- 1x 74HCT14 (DIP-14) — PWM level-shift, 2 gates used (4 spare)
+- 1x **SN74HCT14N** (TI, DIP-14) — PWM level-shift, 2 gates used (4 spare).
+  **In parts drawer, confirmed, no order needed.**
 - 1x pull-up resistor (10kΩ to 3.3V) on BKIN, temporary until OCP comparator exists
 
 **Unchanged:**
-- Existing 74HC14 (CT frequency conditioner) — reroute its VCC from 5V to 3.3V
+- Existing **SN74HC14N** (TI, genuine, CT frequency conditioner) — reroute its
+  VCC from 5V to 3.3V (see feedback path note above)
 - IXDN604 x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
+
+> Two different 74x14 parts in this design, same DIP-14 pinout, different
+> logic families — **do not mix them up on the bench.** SN74HCT14N = PWM
+> level-shift (near the IXDN604s). SN74HC14N = CT feedback conditioner (near
+> the frequency sense input). Consider labeling them physically.
 
 ## Physical Layout Notes
 
