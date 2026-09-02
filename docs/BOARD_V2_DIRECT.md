@@ -29,14 +29,43 @@ graph LR
     IXDN2 -->|"OUT (pin 2)"| GDT2["GDT Primary B"]
 ```
 
-> **Use SN74HCT14N (TI), NOT the SN74HC14N, for this level-shift.** IXDN630MCI
-> needs VIH=3.5V min. The genuine TI SN74HC14N at VCC=4.5-5V has VIH≈3.15-3.5V
-> (0.7×VCC, CMOS-level) — a 3.3V input from the Nucleo is marginal/out-of-spec
-> against that. The SN74HCT14N has TTL-compatible inputs, VIH=2.0V FIXED
-> regardless of VCC, so 3.3V clears it with real margin. Pin-compatible
-> drop-in, same DIP-14 footprint. **Confirmed in parts drawer — no order
-> needed.** 10kΩ pulldown stays on each IXDN604 input (fail-safe if the
-> 74HCT14 output is ever disconnected).
+> **Need SN74HCT14N (TI) for this level-shift — NOT the SN74HC14N you have on
+> hand.** IXDN630MCI needs VIH=3.5V min. The genuine TI SN74HC14N at
+> VCC=4.5-5V has VIH≈3.15-3.5V (0.7×VCC, CMOS-level) — a 3.3V input from the
+> Nucleo is marginal/out-of-spec against that. The SN74HCT14N has
+> TTL-compatible inputs, VIH=2.0V FIXED regardless of VCC, so 3.3V clears it
+> with real margin. Pin-compatible drop-in, same DIP-14 footprint.
+>
+> **STATUS: only SN74HC14N confirmed in parts drawer. SN74HCT14N needs to be
+> sourced (Mouser/Digikey) or an alternative found — see options below.**
+>
+> 10kΩ pulldown stays on each IXDN604 input (fail-safe if this gate's output
+> is ever disconnected).
+
+### Options until the HCT part arrives
+
+1. **Order SN74HCT14N** — cheap, few dollars, same footprint as what you
+   already have wired experience with. Cleanest long-term fix.
+2. **Run the SN74HC14N you have from a LOWER VCC** — HC-family VIH scales
+   with VCC (VIH=0.7×VCC). At VCC=3.3V, VIH≈2.3V, comfortably below your
+   Nucleo's 3.3V output. BUT the chip's OUTPUT then only swings to ~3.3V,
+   which is BELOW the IXDN630's VIH=3.5V — same problem, just moved to the
+   output side. **This does not work** — don't use this option.
+3. **Bench-test the HC14 you have anyway, at 5V, with the 3.3V input** — HC
+   parts often still switch correctly with a 3.3V input even though it's
+   below the datasheet-guaranteed VIH, because real silicon has margin beyond
+   worst-case spec. You could verify on the AD3: feed 3.3V logic in, confirm
+   clean 5V square wave out, check propagation delay/edges look normal. If it
+   works reliably, it MIGHT be usable — but you're now relying on unspecified
+   margin rather than a guaranteed threshold, which is risky right next to
+   IGBTs. Not recommended for anything beyond a quick bench check.
+4. **Any other TTL-input buffer/gate you have** — 74LS14, 4050/4049 (CMOS
+   buffer with wide input tolerance), or a simple 2N7000 MOSFET level-shift
+   circuit would also work if something's in the drawer already.
+
+**Recommendation: order the SN74HCT14N.** It's inexpensive and removes the
+ambiguity entirely — same lesson as the isolator debug: don't build on
+marginal specs next to a 400A inverter.
 
 ## Feedback / Fault Path (Power stage → Nucleo)
 
@@ -116,7 +145,9 @@ graph TD
 
 **Added:**
 - 1x **SN74HCT14N** (TI, DIP-14) — PWM level-shift, 2 gates used (4 spare).
-  **In parts drawer, confirmed, no order needed.**
+  **NEEDS TO BE ORDERED** — only the HC (not HCT) variant is in the parts
+  drawer. See options in the PWM path section above if you want a bench
+  workaround while waiting on shipping.
 - 1x pull-up resistor (10kΩ to 3.3V) on BKIN, temporary until OCP comparator exists
 
 **Unchanged:**
@@ -125,9 +156,11 @@ graph TD
 - IXDN604 x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
 
 > Two different 74x14 parts in this design, same DIP-14 pinout, different
-> logic families — **do not mix them up on the bench.** SN74HCT14N = PWM
-> level-shift (near the IXDN604s). SN74HC14N = CT feedback conditioner (near
-> the frequency sense input). Consider labeling them physically.
+> logic families — **do not mix them up on the bench once both are in hand.**
+> SN74HCT14N = PWM level-shift (near the IXDN604s), ORDER THIS ONE.
+> SN74HC14N = CT feedback conditioner (near the frequency sense input),
+> already in the parts drawer. Consider labeling both physically once the
+> HCT part arrives.
 
 ## Physical Layout Notes
 
