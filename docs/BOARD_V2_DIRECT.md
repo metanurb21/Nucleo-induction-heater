@@ -117,28 +117,38 @@ clear both with margin, without exceeding ~3.8V absolute max on peaks.
 > drain and the IXDN604 input (that miswiring caused a slow RC sawtooth
 > during bench test — see resistor-value note above for the full story).
 
-**Speed note — ROUND 2 (AD3-verified, 470Ω):** rise time improved from 3.26µs
-to **325ns**, but that STILL EXCEEDS the 300ns dead-time budget — the
-rising channel isn't fully settled before the dead-time gap closes, which
-defeats the purpose of the gap. Also observed 16-20% overshoot with
+**Speed note — ROUND 2 (AD3-verified, 470Ω, UNLOADED — IXDN604 not yet
+wired in, 100kΩ pulldown present, probed at Drain):** rise time improved
+from 3.26µs to **325ns**, but that STILL EXCEEDS the 300ns dead-time budget
+— the rising channel isn't fully settled before the dead-time gap closes,
+which defeats the purpose of the gap. Also observed 16-20% overshoot with
 excursions to **-0.39V to -0.43V** on both channels — LC ringing, likely from
 parasitic inductance in the current flying-lead wiring interacting with the
-MOSFET's switching edge and drain capacitance. That negative excursion risks
-exceeding absolute-min input ratings on downstream chips and is likely
-inflating the effective settling time beyond the raw threshold-crossing
-rise time measurement.
+MOSFET's switching edge and drain capacitance.
 
-**Next iteration — try in combination:**
-1. **Lower pull-up further: 220Ω** (or 150Ω). Current draw at 220Ω:
-   5V/220Ω≈23mA/channel, still trivial. Should push rise time further below
-   300ns.
-2. **Add damping for the ringing** — either a small series resistor
-   (10-33Ω) between the MOSFET drain and the pull-up/pulldown/IXDN604 node
-   (snubs the ring, small RC cost), or a small Schottky (1N5819) clamped
-   from the node to GND (and optionally another to 5V) to hard-clip
-   excursions — same principle as the proven GDT protection network, scaled
-   down for this node.
-3. **Temporary mitigation while tuning:** bump dead-time to 500ns via serial
+> **Important caveat: this is an UNLOADED measurement.** The IXDN604 was not
+> connected. Its input capacitance (typically small, low-pF range) may add
+> some damping once wired in, which could reduce the observed overshoot —
+> this measurement is likely a worst case, not the final number. Don't
+> over-correct (e.g. going straight to very low pull-up values or heavy
+> snubbing) based on unloaded data alone. Re-test with the real IXDN604 load
+> before adding damping components.
+
+**Next iteration — sequenced (don't jump straight to snubbing):**
+1. **Lower pull-up further: try 220Ω** (still unloaded is fine for this
+   step). Current draw at 220Ω: 5V/220Ω≈23mA/channel, still trivial. Should
+   push rise time further below 300ns.
+2. **THEN wire in the real IXDN604** and re-probe at the same point (or its
+   IN pin directly) BEFORE adding any damping. Its input capacitance may
+   already reduce the ringing seen in the unloaded test — no point adding
+   snubbing/clamp components to fix a worst-case number that partially
+   self-resolves with the real load present.
+3. **Only if ringing is still a problem with the real load:** add a small
+   series resistor (10-33Ω) between the MOSFET drain and the
+   pull-up/pulldown/IXDN604 node (snubs the ring, small RC cost), or a small
+   Schottky (1N5819) clamped from the node to GND (and optionally another to
+   5V) — same principle as the proven GDT protection network, scaled down.
+4. **Temporary mitigation while tuning:** bump dead-time to 500ns via serial
    (`d500`) for extra margin during resistor-value experimentation; dial
    back down once edges are comfortably fast.
 
