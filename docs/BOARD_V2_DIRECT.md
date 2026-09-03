@@ -350,3 +350,39 @@ graph TD
 - Watch the ~37% overshoot / undershoot-to--0.55V ringing seen in the 10kΩ
   test — may improve once IXDN630MCI is wired in (adds damping) and wiring is
   tightened. Add a small Schottky clamp to GND on the drain node if it persists.
+
+## Post-mortem: AD3 Channel 2 false ringing (RESOLVED — instrument, not circuit)
+
+After the full IXDN630MCI array was wired (clamp diodes + DC-block caps on
+both channels, per the protection network above), initial probing showed
+severe, consistent asymmetry: Channel 1 read ~10-20% overshoot, Channel 2
+read 75-165% overshoot, across THREE different load resistors (22Ω, ~10Ω,
+~470Ω-parallel). The ratio held steady regardless of load, which was the key
+clue pointing away from a real load-dependent resonance.
+
+**Diagnostic sequence that found it:**
+1. Verified board wiring, diode orientation, solder joints — all clean.
+2. Tied both probe grounds directly at the IXDN pin instead of a shared
+   distant Nucleo GND — reduced C1 slightly, C2 barely changed. Ruled out
+   ground-lead inductance as the primary cause.
+3. **Physically swapped the two probes between the channels** (same test,
+   same load) — the bad reading STAYED on scope Channel 2, even though it
+   was now connected to the physical node that had previously read clean.
+   This conclusively proved the fault was in the instrument/probe, not the
+   board (a real circuit fault would have followed the physical node, not
+   the scope channel).
+4. Swapped in a different physical probe on Channel 2 — overshoot dropped
+   from 100%+ to 6.67%, matching Channel 1's clean behavior.
+5. **Confirmed on a bench oscilloscope: perfect square wave, no ringing.**
+
+**Root cause: the AD3's Channel 2 probe/cable (or its compensation) was
+producing false ringing on fast edges (~28-30ns rise time).** The circuit —
+IRLB8721 level-shift, IXDN630MCI drive, GDT protection network — was correct
+the entire time. No hardware changes were needed.
+
+**Lesson for future AD3 use on this project:** when chasing an asymmetric
+or unexpected reading between channels, swap probes between channels EARLY
+in the diagnostic sequence (before extensive board rework) to rule out
+instrumentation. A real circuit fault follows the physical node when probes
+are swapped; an instrument fault follows the scope channel. Cross-check
+against a bench scope if available and results still don't make sense.
