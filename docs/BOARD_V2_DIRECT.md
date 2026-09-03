@@ -43,6 +43,22 @@ graph LR
     IXDN2 -->|"OUT (pin 2)"| GDT2["GDT Primary B"]
 ```
 
+**CT / burden circuit — CONFIRMED, reused from the proven ESP32 build:** work
+coil leg → 2kV cap → 40T ferrite toroid CT → 100Ω 100W burden resistor. This
+exact combination was battle-tested on the ESP32 version (successfully fed
+into its ADC for display) — keep it as-is.
+
+**74HC14 input divider (10kΩ/15kΩ) — NOT YET VERIFIED for this signal path.**
+That divider value was carried over from the ESP32's `PIN_VCO_IN` comment,
+which scaled a clean CD4046 VCO square wave for a frequency counter — a
+different signal than the CT burden's analog sine feeding a Schmitt trigger.
+**Do not treat 10k/15k as final.** Once the burden circuit is wired and the
+coil is running (even at low bench power), scope the actual burden voltage
+on the AD3 and size the divider from that real measurement — same approach
+used to calibrate the TIM1 clock constant earlier. The 74HC14 Schmitt
+thresholds at 3.3V VCC are VIH≈2.3V / VIL≈1.0V — the divided signal needs to
+clear both with margin, without exceeding ~3.8V absolute max on peaks.
+
 **Per-channel circuit (×2, one per PWM signal):**
 
 | MOSFET pin | Connects to |
@@ -190,8 +206,11 @@ graph TD
 - **Firmware: flip TIM1 CCER polarity bits (`CC1P`/`CC1NP`) in `PwmDrive::init()`**
   to compensate for the IRLB8721 level-shift inversion. Do this BEFORE first
   power-up of this path.
-- Confirm CT divider values still work with SN74HC14N at 3.3V VCC (was sized
-  assuming 5V thresholds)
+- **Measure actual CT burden voltage on the AD3** with the coil running (low
+  power bench test is fine) and size the 74HC14 input divider from that real
+  number. The 10k/15k currently in the docs is a carryover from the old
+  ESP32 VCO-frequency-counter divider, NOT calculated for this signal — same
+  proven CT/burden hardware, different downstream circuit than before.
 - Design/wire the OCP comparator (currently just a 3.3V pull-up placeholder
   on BKIN)
 - Verify on AD3: rise/fall time through the IRLB8721 level-shift, confirm
