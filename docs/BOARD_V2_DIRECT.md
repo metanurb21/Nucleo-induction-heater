@@ -39,8 +39,10 @@ graph LR
     Q1S["IRLB8721 #1 Source"] --> GND1["GND"]
     Q2S["IRLB8721 #2 Source"] --> GND2["GND"]
 
-    IXDN1 -->|"OUT (pin 2)"| GDT1["GDT Primary A"]
-    IXDN2 -->|"OUT (pin 2)"| GDT2["GDT Primary B"]
+    IXDN1 -->|"OUT (pin 2)"| PROT1["Clamp diode pair<br/>+ DC-block caps"]
+    IXDN2 -->|"OUT (pin 2)"| PROT2["Clamp diode pair<br/>+ DC-block caps"]
+    PROT1 --> GDT1["GDT Primary A"]
+    PROT2 --> GDT2["GDT Primary B"]
 ```
 
 **CT / burden circuit — CONFIRMED, reused from the proven ESP32 build:** work
@@ -86,6 +88,60 @@ by the 10kΩ pull-up and MOSFET/wiring capacitance dominates actual rise time
 in earlier testing. Verify on the AD3 once built; if rise time eats too much
 into the 300ns dead-time budget, drop the pull-up to 4.7kΩ or lower (faster
 RC, more current draw — fine at this scale).
+
+## GDT Primary Protection Network (carried over from ESP32 build, PROVEN)
+
+**Ran for over a year with zero IXDN losses after implementing this — keep
+it, symmetric on BOTH channels this time** (original build had it fuller on
+one channel than the other since it mixed IXDI + IXDN; v2 uses IXDN604 on
+both, so both get the full network).
+
+The GDT's leakage inductance causes voltage ringing/overshoot on the driver
+output pin at each switch transition. Without clamping, this ringing can
+exceed the IXDN604's output stage ratings and destroy it — which is exactly
+what happened before this network was added. This is a documented, hard-won
+fix, not a guess.
+
+```
+                      15V
+                       │
+                     Anode
+                    (D_upper)
+                     Cathode
+                       │
+IXDN604 OUT ───────────●─────────┬──────────► GDT Primary
+ (pin 2)                │         │
+                       Anode    1µF ‖ 1µF
+                      (D_lower)  (parallel,
+                       Cathode    DC-block)
+                       │
+                      GND
+```
+
+**Per-channel components (×2, one set per IXDN604):**
+
+| Component | Connects to |
+|-----------|-------------|
+| D_lower (1N5819) | Anode → GND, Cathode → IXDN604 OUT node |
+| D_upper (1N5819) | Anode → IXDN604 OUT node, Cathode → 15V |
+| 2x 1µF ceramic (parallel) | Between IXDN604 OUT node and GDT primary lead |
+
+**What each part does:**
+- **Clamp diode pair** — if the OUT node rings below GND, D_lower conducts
+  and clamps it near 0V. If it rings above 15V, D_upper conducts and clamps
+  it near 15V. Protects the IXDN604 output stage from destructive overshoot.
+- **1µF ‖ 1µF DC-blocking caps** — prevents any DC bias / duty-cycle asymmetry
+  from driving a net DC current through the GDT primary (which would walk the
+  core toward saturation over time). Two in parallel for lower ESR and higher
+  ripple current handling than a single cap. Also has a secondary filtering
+  effect on the edge shape seen at the transformer — this was likely what
+  gave the "cleaner square wave" result observed during original testing.
+
+**Verification plan:** wire this on both channels as designed. If the AD3
+shows signal degradation at the GDT secondary once built, the fix is simple —
+bypass the network on one channel at a time (jumper straight from IXDN604 OUT
+to the GDT primary lead) and compare. Easy to isolate since each channel has
+its own components.
 
 ### Other parts considered, not used
 
@@ -184,6 +240,10 @@ graph TD
 - Existing **SN74HC14N** (TI, genuine, CT frequency conditioner) — reroute its
   VCC from 5V to 3.3V (see feedback path note above)
 - IXDN604 x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
+- GDT primary protection network (clamp diodes + DC-block caps) — carried
+  over from the proven ESP32 build, now applied symmetrically to BOTH
+  channels (see dedicated section above). Need: 4x 1N5819, 4x 1µF ceramic
+  (2 per channel).
 
 **No longer needed (was going to order, now unnecessary):**
 - SN74HCT14N — replaced by the IRLB8721 level-shift circuit
