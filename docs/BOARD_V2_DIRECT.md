@@ -433,21 +433,21 @@ graph LR
 | COM | 120V AC hot (mains side) |
 | NO (normally open) | Contactor coil (+) — closes when PB14 drives the module active |
 
-> **Check the module's IN pin logic level and active polarity before wiring.**
-> Most common cheap relay modules are **active-LOW** on IN (module energizes
-> when IN is pulled to GND, not driven HIGH) — this is the OPPOSITE of what
-> the current firmware assumes. `MainsControl.cpp` currently does
-> `digitalWrite(PIN_CONTACTOR, HIGH)` to energize. **Verify your specific
-> module's polarity (check its silkscreen/datasheet, or test with a meter)
-> before connecting PB14** — if it's active-LOW, either invert the logic in
-> firmware or confirm the module has a jumper/option for active-HIGH.
+> **IDENTIFIED: Teyleten Robot "1 Channel Optocoupler 3V/3.3V Relay HIGH
+> LEVEL Driver Module"** (Amazon B07XGZSYJV). Confirmed **active-HIGH**
+> from the product name/spec ("High Level Driver" — distinguishes it from
+> the low-level/active-LOW sibling variant sold under the same style).
+> **Matches the current firmware exactly** — `MainsControl::energize()`
+> drives PB14 HIGH to energize, `deEnergize()` drives LOW. No firmware
+> changes needed.
 >
-> Also verify the **IN pin's input impedance** — many of these modules have
-> an onboard optocoupler with its own current-limiting resistor already
-> built in, so PB14 may be able to drive IN directly with no external
-> series resistor needed. Some modules do want a resistor if driven from a
-> lower-current logic pin — check the specific module's input circuit (often
-> printed on the PCB or in its datasheet) before assuming direct-drive is safe.
+> **Bonus: this module is spec'd for 3V/3.3V logic** (not the more common
+> 5V-Arduino-logic variant), so PB14 (3.3V) can likely drive IN directly with
+> no level-shift concern. **Still confirm what voltage VCC wants** — the
+> logic/opto side being 3.3V-native doesn't guarantee the relay coil driver
+> side (VCC pin) also runs at 3.3V; many similar modules keep VCC at 5V for
+> the coil driver even when the IN/opto side is 3.3V-tolerant. Check before
+> powering VCC.
 >
 > No JST or isolator needed here — PB14 wires directly to the module's IN pin
 > on the same board. The module's onboard optocoupler still provides the
@@ -500,7 +500,7 @@ graph LR
 
 | Qty | Part | Value/Type | Notes |
 |-----|------|-----------|-------|
-| 1 | Relay module | All-in-one (opto+diode+driver+LED built in), e.g. SRD-05VDC based | VCC/GND/IN/COM/NO/NC pins. **Check active-HIGH vs active-LOW on IN before wiring.** |
+| 1 | Relay module | Teyleten 1-Channel Opto 3V/3.3V Relay "High Level Driver" (Amazon B07XGZSYJV) | VCC/GND/IN/COM/NO pins. Confirmed active-HIGH, 3.3V logic native — matches firmware and Nucleo I/O directly. |
 | 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
 | 1 | Diode | 1N4007 | Rectifies TX secondary |
 | 1 | Resistor | 27kΩ 1/4W | Divider upper leg — **TBD, verify on AD3** |
@@ -539,16 +539,11 @@ wiring described above.
 
 ### Still TODO on this section
 
-- **⚠️ CHECK RELAY MODULE IN-PIN POLARITY BEFORE CONNECTING PB14.** Current
-  firmware (`MainsControl.cpp`) drives PB14 HIGH to energize the contactor.
-  Many common relay modules are active-LOW on IN (energize when pulled to
-  GND). If this module is active-LOW and wired without checking, the
-  contactor logic would be INVERTED — energized at boot (dangerous) and
-  de-energized when firmware thinks it's turning ON. Verify polarity with a
-  meter or the module's datasheet/silkscreen before wiring PB14 to IN. If
-  it's active-LOW, either flip the firmware logic (`digitalWrite` HIGH/LOW
-  swapped in `MainsControl::energize()`/`deEnergize()`) or check for an
-  active-HIGH jumper option on the module.
+- ✅ **Relay module polarity RESOLVED** — identified as Teyleten "3V/3.3V
+  Relay High Level Driver Module" (Amazon B07XGZSYJV), confirmed active-HIGH,
+  matches firmware as-is. No changes needed.
+- **Confirm the module's VCC voltage requirement** before powering it — logic
+  side is 3.3V-native but verify VCC (coil driver supply) isn't still 5V-only.
 - **Verify the 27kΩ/10kΩ AC-sense divider on the AD3** once the isolation TX
   is wired — same "don't trust the carried-over value" caution as the CT
   divider. Measure real TX secondary voltage, confirm ADC-safe range and
