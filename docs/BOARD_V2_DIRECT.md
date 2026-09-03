@@ -417,8 +417,8 @@ version — the module does all of it internally.
 
 ```mermaid
 graph LR
-    PB14["PB14 (GPIO)<br/>Nucleo, direct trace"] -->|"direct, no series R needed*"| IN["Relay Module<br/>IN pin"]
-    V5["5V rail"] --> VCC["Relay Module<br/>VCC pin"]
+    PB14["PB14 (GPIO)<br/>Nucleo, direct trace"] -->|"direct, no level-shift needed"| IN["Relay Module<br/>IN pin"]
+    V5["5V rail"] -->|"VCC confirmed 5V, not 3.3V"| VCC["Relay Module<br/>VCC pin"]
     GND["GND"] --> GNDM["Relay Module<br/>GND pin"]
     IN -.->|"module's onboard<br/>opto + driver"| RELAY_OUT["Relay Module<br/>COM/NO contacts"]
     RELAY_OUT -->|"120V AC"| COIL["Contactor Coil<br/>(FUJI 100A)"]
@@ -441,13 +441,15 @@ graph LR
 > drives PB14 HIGH to energize, `deEnergize()` drives LOW. No firmware
 > changes needed.
 >
-> **Bonus: this module is spec'd for 3V/3.3V logic** (not the more common
-> 5V-Arduino-logic variant), so PB14 (3.3V) can likely drive IN directly with
-> no level-shift concern. **Still confirm what voltage VCC wants** — the
-> logic/opto side being 3.3V-native doesn't guarantee the relay coil driver
-> side (VCC pin) also runs at 3.3V; many similar modules keep VCC at 5V for
-> the coil driver even when the IN/opto side is 3.3V-tolerant. Check before
-> powering VCC.
+> **VCC RESOLVED: use 5V, not 3.3V.** User reviews on this module confirm
+> the IN pin works directly from 3.3V logic (ESP32/STM32) with no extra
+> circuitry, but the module runs more reliably ("happier") on 5V VCC for the
+> relay coil driver side. Since the board already has a 5V rail for other
+> purposes, power VCC from that — costs nothing extra and gives the relay a
+> fuller, more reliable pull-in than running the coil driver at 3.3V.
+>
+> **Final pin-out: VCC → 5V rail, GND → shared ground, IN → PB14 direct
+> (3.3V, no level-shift needed), COM/NO → 120V AC to contactor coil.**
 >
 > No JST or isolator needed here — PB14 wires directly to the module's IN pin
 > on the same board. The module's onboard optocoupler still provides the
@@ -542,8 +544,9 @@ wiring described above.
 - ✅ **Relay module polarity RESOLVED** — identified as Teyleten "3V/3.3V
   Relay High Level Driver Module" (Amazon B07XGZSYJV), confirmed active-HIGH,
   matches firmware as-is. No changes needed.
-- **Confirm the module's VCC voltage requirement** before powering it — logic
-  side is 3.3V-native but verify VCC (coil driver supply) isn't still 5V-only.
+- ✅ **VCC voltage RESOLVED** — use 5V (not 3.3V). User reviews confirm IN
+  works from 3.3V directly, but the module runs more reliably with 5V on
+  VCC for the coil driver. Board already has a 5V rail for this.
 - **Verify the 27kΩ/10kΩ AC-sense divider on the AD3** once the isolation TX
   is wired — same "don't trust the carried-over value" caution as the CT
   divider. Measure real TX secondary voltage, confirm ADC-safe range and
