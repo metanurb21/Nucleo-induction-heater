@@ -10,8 +10,8 @@
 graph LR
     PA8["PA8<br/>TIM1_CH1"] -->|"100Ω"| ISO1A["Si8621 #1<br/>Pin 2 A1"]
     PB13["PB13<br/>TIM1_CH1N"] -->|"100Ω"| ISO1B["Si8621 #1<br/>Pin 3 A2"]
-    ISO1A["Si8621 #1<br/>Pin 7 B1"] -->|"10kΩ pulldown"| IXDN1["IXDN604 #1<br/>Pin 4 IN"]
-    ISO1B["Si8621 #1<br/>Pin 6 B2"] -->|"10kΩ pulldown"| IXDN2["IXDN604 #2<br/>Pin 4 IN"]
+    ISO1A["Si8621 #1<br/>Pin 7 B1"] -->|"10kΩ pulldown"| IXDN1["IXDN630MCI #1<br/>Pin 4 IN"]
+    ISO1B["Si8621 #1<br/>Pin 6 B2"] -->|"10kΩ pulldown"| IXDN2["IXDN630MCI #2<br/>Pin 4 IN"]
     IXDN1 -->|"Pin 2 OUT"| GDT1["GDT Primary<br/>Leg A"]
     IXDN2 -->|"Pin 2 OUT"| GDT2["GDT Primary<br/>Leg B"]
     GDT1 --> IGBT["H-Bridge<br/>IGBT Gates"]
@@ -95,7 +95,7 @@ graph TD
     R5 --> HC14V["74HC14 VCC"]
     R5 --> RELAY["Relay coil (contactor opto)"]
 
-    HV15["15V RAIL (separate lower-perf supply)"] --> IXDN["IXDN604 VCC"]
+    HV15["15V RAIL (separate lower-perf supply)"] --> IXDN["IXDN630MCI VCC"]
 
     IN12 --> STAR["★ SINGLE STAR GROUND ★"]
     R5 --> STAR
@@ -113,7 +113,7 @@ graph TD
 | 12V | 12V input (shared) | Nucleo VIN (up JST Conn1 Red) + regulator input |
 | 5V | Adjustable regulator from 12V | Si8621 (both sides), 74HC14, relay coil |
 | 3.3V | Nucleo regulator (down JST Conn1 Blue) | Lower-perf 3.3V loads, pull-ups, ADC ref |
-| 15V | Separate lower-perf supply | IXDN604 VCC (gate drive) |
+| 15V | Separate lower-perf supply | IXDN630MCI VCC (gate drive) |
 
 > Si8621: Vdd1 (pin 1) + Vdd2 (pin 8) → 5V; GND1 (pin 4) + GND2 (pin 5) → star
 > ground. The chip buffers A↔B signals cleanly across the (now-unused as a
@@ -146,7 +146,7 @@ block-beta
     space:5
     ISO1["Si8621 #1<br/>OUTPUT ISO"]:2 HC14["74HC14<br/>freq cond"] ISO2["Si8621 #2<br/>INPUT ISO"]:2
     space:5
-    IXDN["IXDN604 x2<br/>(15V gate drive)"]:2 space RLY["Relay + Opto<br/>(contactor)"]:2
+    IXDN["IXDN630MCI x2<br/>(15V gate drive)"]:2 space RLY["Relay + Opto<br/>(contactor)"]:2
     space:5
     PWRIN["12V IN +<br/>5V step-down"]:2 GDT_T["GDT out<br/>(A/B)"] FB["FAULT/FREQ<br/>+ NTC in"]:2
 ```
@@ -171,7 +171,7 @@ block-beta
 
 ### Board Zones (single star ground — NOT an isolation barrier)
 - **Top perf** = Nucleo + UI (TFT, encoder, LEDs)
-- **Lower perf LEFT** = Si8621 #1 → IXDN604 outputs (PWM to gate drivers)
+- **Lower perf LEFT** = Si8621 #1 → IXDN630MCI outputs (PWM to gate drivers)
 - **Lower perf RIGHT** = Si8621 #2 inputs (fault + frequency feedback), 74HC14
 - **Lower perf BOTTOM** = power rails, relay/opto, terminals
 - **Ground: ONE star point.** All returns (12V, 5V, 3.3V, 15V, Nucleo) meet
@@ -189,10 +189,10 @@ block-beta
   74HC14, relay coil
 - Nucleo 3.3V → down JST Conn1 (Blue) → separate 3.3V supply on lower perf
   where needed (+ pull-ups + ADC reference)
-- 15V separate lower-perf rail → IXDN604 VCC
+- 15V separate lower-perf rail → IXDN630MCI VCC
 - ALL grounds → single star point (12V, 5V, 3.3V, 15V, Nucleo)
 - 100nF (+10nF) decoupling at EACH IC power pin
-- 100µF bulk near the 12V input, 10µF near each IXDN604, 47-100µF near the
+- 100µF bulk near the 12V input, 10µF near each IXDN630MCI, 47-100µF near the
   Si8621/74HC14/relay cluster
 - Nucleo jumper on **E5V** when running from external 12V; **U5V** when on USB
 
@@ -226,8 +226,8 @@ block-beta
 | 3 | A2 | PWM_B from Nucleo (PB13) via JST Conn1 White, through 100Ω series |
 | 4 | GND1 | Star ground |
 | 5 | GND2 | Star ground |
-| 6 | B2 | → IXDN604 #2 IN (PWM_B), via 10kΩ pulldown to GND |
-| 7 | B1 | → IXDN604 #1 IN (PWM_A), via 10kΩ pulldown to GND |
+| 6 | B2 | → IXDN630MCI #2 IN (PWM_B), via 10kΩ pulldown to GND |
+| 7 | B1 | → IXDN630MCI #1 IN (PWM_A), via 10kΩ pulldown to GND |
 | 8 | VDD2 | 5V + 100nF (+ 10nF) cap to GND |
 
 *Signal flows: A1→B1 (PWM_A), A2→B2 (PWM_B)*
@@ -247,19 +247,19 @@ block-beta
 
 *Signal flows: B1→A1 (FAULT), B2→A2 (FREQ feedback)*
 
-### IXDN604 Gate Drivers (on same PCB, 15V rail section)
+### IXDN630MCI Gate Drivers (on same PCB, 15V rail section)
 
 ```
          ┌─────────┐
    VCC 1 ┤         ├ (tab = GND)
-   OUT 2 ┤ IXDN604 ├
+   OUT 2 ┤ IXDN630MCI ├
    GND 3 ┤         ├
     IN 4 ┤         ├
     NC 5 ┤         ├
          └─────────┘
 ```
 
-### IXDN604 #1 — PWM_A (non-inverting, drives GDT leg A)
+### IXDN630MCI #1 — PWM_A (non-inverting, drives GDT leg A)
 
 | Pin | Name | Connection |
 |-----|------|-----------|
@@ -269,7 +269,7 @@ block-beta
 | 4 | IN | Si8621 #1 pin 7 (B1) via 10kΩ pulldown to GND |
 | 5 | NC | No connection |
 
-### IXDN604 #2 — PWM_B (non-inverting, drives GDT leg B)
+### IXDN630MCI #2 — PWM_B (non-inverting, drives GDT leg B)
 
 | Pin | Name | Connection |
 |-----|------|-----------|
@@ -279,7 +279,7 @@ block-beta
 | 4 | IN | Si8621 #1 pin 6 (B2) via 10kΩ pulldown to GND |
 | 5 | NC | No connection |
 
-*Both IXDN604 are non-inverting. Complementary signals + dead-time handled by STM32 TIM1.*
+*Both IXDN630MCI are non-inverting. Complementary signals + dead-time handled by STM32 TIM1.*
 *10kΩ pulldown on each input ensures gates stay OFF if signal cable disconnects.*
 
 ### 74HC14 Schmitt Trigger — Frequency Feedback Conditioner
@@ -318,7 +318,7 @@ block-beta
 │  12V input         From adj. reg    From Nucleo     Separate       │
 │  → Nucleo VIN      Si8621 Vdd1+2    (down JST)      lower-perf     │
 │  → adj. regulator  74HC14 VCC       Lower-perf      supply         │
-│                    Relay coil       3.3V loads      IXDN604 VCC    │
+│                    Relay coil       3.3V loads      IXDN630MCI VCC    │
 │                                     Pull-ups/ADCref                │
 │                                                                    │
 │         ★★★  ALL RETURNS → SINGLE STAR GROUND  ★★★                 │

@@ -70,7 +70,7 @@ See `NUCLEO_PINOUT.md` for full pin functions and morpho locations.
 - **5V (Conn 2, Blue/pin 7):** spare / unused.
 - **Fail-safe:** BKIN is active-LOW with a pull-up on the Nucleo. If a JST is
   unplugged, no PWM reaches the gate drivers anyway (10kΩ pulldowns on the
-  IXDN604 inputs hold the gates OFF), so a disconnected board = gates off.
+  IXDN630MCI inputs hold the gates OFF), so a disconnected board = gates off.
 - **Assembly:** JST housings hot-glued to the perf after final seating to resist
   contactor vibration while staying removable with heat.
 

@@ -17,7 +17,7 @@ function).
 
 ---
 
-## PWM Output Path (Nucleo → IRLB8721 level-shift → IXDN604 → GDT)
+## PWM Output Path (Nucleo → IRLB8721 level-shift → IXDN630MCI → GDT)
 
 **FINAL: using IRLB8721 MOSFET level-shifters, not the 74HCT14.** No HCT part
 in stock, and the IRLB8721 is a logic-level MOSFET (Vgs-th ~1-2V, drives
@@ -33,8 +33,8 @@ graph LR
     V5A["5V"] -->|"470Ω pull-up"| Q1D["IRLB8721 #1<br/>Drain = output node"]
     V5B["5V"] -->|"470Ω pull-up"| Q2D["IRLB8721 #2<br/>Drain = output node"]
 
-    Q1D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN1["IXDN604 #1<br/>IN (pin 4)"]
-    Q2D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN2["IXDN604 #2<br/>IN (pin 4)"]
+    Q1D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN1["IXDN630MCI #1<br/>IN (pin 4)"]
+    Q2D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN2["IXDN630MCI #2<br/>IN (pin 4)"]
 
     Q1S["IRLB8721 #1 Source"] --> GND1["GND"]
     Q2S["IRLB8721 #2 Source"] --> GND2["GND"]
@@ -59,9 +59,9 @@ graph LR
 > MOSFET is ON: 5V/470Ω≈10.6mA per channel — trivial for the 5V/5A supply.
 >
 > **⚠️ CRITICAL — do not use equal pull-up/pulldown values.** If the pulldown
-> at the IXDN604 input were also 10kΩ, it would form a resistive DIVIDER with
+> at the IXDN630MCI input were also 10kΩ, it would form a resistive DIVIDER with
 > the pull-up (not clean logic levels): 5V×10k/(10k+10k)=2.5V when the MOSFET
-> is off — well below the IXDN604's VIH=3.5V, guaranteed to fail. The
+> is off — well below the IXDN630MCI's VIH=3.5V, guaranteed to fail. The
 > pulldown must be much WEAKER (higher resistance) than the pull-up so it
 > barely loads the node in normal operation: at 470Ω pull-up + 100kΩ
 > pulldown, the node still reaches ~4.98V (negligible ~1% drop), while still
@@ -71,7 +71,7 @@ graph LR
 > **Ringing observed:** 36-38% overshoot and excursions to ~-0.55V on both
 > channels during this test — likely LC ringing from the fast (63ns) MOSFET
 > turn-off interacting with stray wiring inductance on the current flying
-> leads. Watch this once the IXDN604 is wired in (its input loading should
+> leads. Watch this once the IXDN630MCI is wired in (its input loading should
 > add damping) and once final board wiring is tightened (shorter leads, less
 > loop inductance). If it persists, a small Schottky (e.g. 1N5819) clamped
 > from the drain node to GND would tame it — same principle as the GDT
@@ -99,25 +99,25 @@ clear both with margin, without exceeding ~3.8V absolute max on peaks.
 |-----------|-------------|
 | Gate | Nucleo PA8 or PB13 (3.3V logic), directly, short trace |
 | Source | Ground |
-| Drain | **470Ω** pull-up to 5V **=** the level-shifted output node → direct wire to IXDN604 IN, plus a separate **100kΩ** branch to GND |
+| Drain | **470Ω** pull-up to 5V **=** the level-shifted output node → direct wire to IXDN630MCI IN, plus a separate **100kΩ** branch to GND |
 
 > **⚠️ THIS CIRCUIT INVERTS THE SIGNAL.** MOSFET off (gate low) → drain pulled
 > to 5V (HIGH). MOSFET on (gate high) → drain pulled to GND (LOW). So Nucleo
-> LOW → IXDN604 sees HIGH, and Nucleo HIGH → IXDN604 sees LOW.
+> LOW → IXDN630MCI sees HIGH, and Nucleo HIGH → IXDN630MCI sees LOW.
 >
 > **Firmware compensates by flipping TIM1 CCER polarity bits** (`CC1P`/`CC1NP`)
 > in `PwmDrive::init()` so the Nucleo pins output pre-inverted logic, which
-> this circuit un-inverts back to correct polarity at the IXDN604. Complementary
+> this circuit un-inverts back to correct polarity at the IXDN630MCI. Complementary
 > relationship between the two channels is preserved either way (invert both).
 > **Already applied and verified in firmware.**
 >
-> **100kΩ pulldown** stays on each IXDN604 input (fail-safe if a MOSFET drain
-> node is ever disconnected — pulls IXDN604 input low = gate off, safe
+> **100kΩ pulldown** stays on each IXDN630MCI input (fail-safe if a MOSFET drain
+> node is ever disconnected — pulls IXDN630MCI input low = gate off, safe
 > default). Must be a SEPARATE branch to GND, NOT in series between the
-> drain and the IXDN604 input (that miswiring caused a slow RC sawtooth
+> drain and the IXDN630MCI input (that miswiring caused a slow RC sawtooth
 > during bench test — see resistor-value note above for the full story).
 
-**Speed note — ROUND 2 (AD3-verified, 470Ω, UNLOADED — IXDN604 not yet
+**Speed note — ROUND 2 (AD3-verified, 470Ω, UNLOADED — IXDN630MCI not yet
 wired in, 100kΩ pulldown present, probed at Drain):** rise time improved
 from 3.26µs to **325ns**, but that STILL EXCEEDS the 300ns dead-time budget
 — the rising channel isn't fully settled before the dead-time gap closes,
@@ -126,26 +126,26 @@ excursions to **-0.39V to -0.43V** on both channels — LC ringing, likely from
 parasitic inductance in the current flying-lead wiring interacting with the
 MOSFET's switching edge and drain capacitance.
 
-> **Important caveat: this is an UNLOADED measurement.** The IXDN604 was not
+> **Important caveat: this is an UNLOADED measurement.** The IXDN630MCI was not
 > connected. Its input capacitance (typically small, low-pF range) may add
 > some damping once wired in, which could reduce the observed overshoot —
 > this measurement is likely a worst case, not the final number. Don't
 > over-correct (e.g. going straight to very low pull-up values or heavy
-> snubbing) based on unloaded data alone. Re-test with the real IXDN604 load
+> snubbing) based on unloaded data alone. Re-test with the real IXDN630MCI load
 > before adding damping components.
 
 **Next iteration — sequenced (don't jump straight to snubbing):**
 1. **Lower pull-up further: try 220Ω** (still unloaded is fine for this
    step). Current draw at 220Ω: 5V/220Ω≈23mA/channel, still trivial. Should
    push rise time further below 300ns.
-2. **THEN wire in the real IXDN604** and re-probe at the same point (or its
+2. **THEN wire in the real IXDN630MCI** and re-probe at the same point (or its
    IN pin directly) BEFORE adding any damping. Its input capacitance may
    already reduce the ringing seen in the unloaded test — no point adding
    snubbing/clamp components to fix a worst-case number that partially
    self-resolves with the real load present.
 3. **Only if ringing is still a problem with the real load:** add a small
    series resistor (10-33Ω) between the MOSFET drain and the
-   pull-up/pulldown/IXDN604 node (snubs the ring, small RC cost), or a small
+   pull-up/pulldown/IXDN630MCI node (snubs the ring, small RC cost), or a small
    Schottky (1N5819) clamped from the node to GND (and optionally another to
    5V) — same principle as the proven GDT protection network, scaled down.
 4. **Temporary mitigation while tuning:** bump dead-time to 500ns via serial
@@ -160,12 +160,12 @@ and its ringing that need more work.
 
 **Ran for over a year with zero IXDN losses after implementing this — keep
 it, symmetric on BOTH channels this time** (original build had it fuller on
-one channel than the other since it mixed IXDI + IXDN; v2 uses IXDN604 on
+one channel than the other since it mixed IXDI + IXDN; v2 uses IXDN630MCI on
 both, so both get the full network).
 
 The GDT's leakage inductance causes voltage ringing/overshoot on the driver
 output pin at each switch transition. Without clamping, this ringing can
-exceed the IXDN604's output stage ratings and destroy it — which is exactly
+exceed the IXDN630MCI's output stage ratings and destroy it — which is exactly
 what happened before this network was added. This is a documented, hard-won
 fix, not a guess.
 
@@ -176,7 +176,7 @@ fix, not a guess.
                     (D_upper)
                      Cathode
                        │
-IXDN604 OUT ───────────●─────────┬──────────► GDT Primary
+IXDN630MCI OUT ───────────●─────────┬──────────► GDT Primary
  (pin 2)                │         │
                        Anode    1µF ‖ 1µF
                       (D_lower)  (parallel,
@@ -185,18 +185,18 @@ IXDN604 OUT ───────────●─────────┬�
                       GND
 ```
 
-**Per-channel components (×2, one set per IXDN604):**
+**Per-channel components (×2, one set per IXDN630MCI):**
 
 | Component | Connects to |
 |-----------|-------------|
-| D_lower (1N5819) | Anode → GND, Cathode → IXDN604 OUT node |
-| D_upper (1N5819) | Anode → IXDN604 OUT node, Cathode → 15V |
-| 2x 1µF ceramic (parallel) | Between IXDN604 OUT node and GDT primary lead |
+| D_lower (1N5819) | Anode → GND, Cathode → IXDN630MCI OUT node |
+| D_upper (1N5819) | Anode → IXDN630MCI OUT node, Cathode → 15V |
+| 2x 1µF ceramic (parallel) | Between IXDN630MCI OUT node and GDT primary lead |
 
 **What each part does:**
 - **Clamp diode pair** — if the OUT node rings below GND, D_lower conducts
   and clamps it near 0V. If it rings above 15V, D_upper conducts and clamps
-  it near 15V. Protects the IXDN604 output stage from destructive overshoot.
+  it near 15V. Protects the IXDN630MCI output stage from destructive overshoot.
 - **1µF ‖ 1µF DC-blocking caps** — prevents any DC bias / duty-cycle asymmetry
   from driving a net DC current through the GDT primary (which would walk the
   core toward saturation over time). Two in parallel for lower ESR and higher
@@ -206,7 +206,7 @@ IXDN604 OUT ───────────●─────────┬�
 
 **Verification plan:** wire this on both channels as designed. If the AD3
 shows signal degradation at the GDT secondary once built, the fix is simple —
-bypass the network on one channel at a time (jumper straight from IXDN604 OUT
+bypass the network on one channel at a time (jumper straight from IXDN630MCI OUT
 to the GDT primary lead) and compare. Easy to isolate since each channel has
 its own components.
 
@@ -214,7 +214,7 @@ its own components.
 
 - SN74HCT14N — correct electrical fit (VIH=2.0V fixed) but not in stock
 - SN74HC14N (the one in stock) — VIH scales with VCC, marginal at 3.3V input,
-  same issue as feeding IXDN604 directly. Not used for this path.
+  same issue as feeding IXDN630MCI directly. Not used for this path.
 - IRF840 / IRF3710 / generic IRF**N — standard threshold (~4V), won't fully
   turn on from 3.3V gate drive. Not suitable.
 - SCT2450KE — SiC power MOSFET, wrong threshold and wildly overkill. Not suitable.
@@ -265,7 +265,7 @@ graph TD
     IN5["5V INPUT"] --> Q["IRLB8721 x2 pull-ups (10kΩ to 5V)"]
     NUC --> V33["Nucleo 3.3V out"]
     V33 --> HC["SN74HC14N VCC (CT conditioner — 3.3V, NOT 5V)"]
-    IN15["15V (existing separate rail)"] --> IXDN["IXDN604 VCC (both)"]
+    IN15["15V (existing separate rail)"] --> IXDN["IXDN630MCI VCC (both)"]
 
     IN12 --> STAR["★ SHARED GROUND ★"]
     IN5 --> STAR
@@ -276,7 +276,7 @@ graph TD
 > **12V → Nucleo VIN.** **5V → IRLB8721 pull-up resistors** (this is the only
 > thing 5V powers now — the level-shift is passive, not chip-based).
 > **Nucleo 3.3V → SN74HC14N VCC** (CT conditioner, must stay off 5V to protect
-> PA0). **15V (separate, existing) → IXDN604 VCC.** All sharing one ground.
+> PA0). **15V (separate, existing) → IXDN630MCI VCC.** All sharing one ground.
 
 **Rail summary:**
 
@@ -285,7 +285,7 @@ graph TD
 | 12V | Board input | Nucleo VIN |
 | 5V | Board input | IRLB8721 x2 pull-up resistors (level-shift reference) |
 | 3.3V | Nucleo onboard regulator | SN74HC14N VCC (CT conditioner), pull-ups |
-| 15V | Existing separate rail | IXDN604 VCC (gate drive) |
+| 15V | Existing separate rail | IXDN630MCI VCC (gate drive) |
 
 ---
 
@@ -302,14 +302,14 @@ graph TD
 - 2x **470Ω** pull-up resistors (MOSFET drain → 5V, forms the level-shift
   output). *AD3-verified value — was 10kΩ, too slow, see notes above.*
 - 2x **100kΩ** pulldown resistors (level-shift output → GND, fail-safe branch,
-  NOT in series with the IXDN604 input). *Was 10kΩ — would have formed a
-  voltage divider with the pull-up and failed to reach IXDN604's VIH.*
+  NOT in series with the IXDN630MCI input). *Was 10kΩ — would have formed a
+  voltage divider with the pull-up and failed to reach IXDN630MCI's VIH.*
 - 1x pull-up resistor (10kΩ to 3.3V) on BKIN, temporary until OCP comparator exists
 
 **Unchanged:**
 - Existing **SN74HC14N** (TI, genuine, CT frequency conditioner) — reroute its
   VCC from 5V to 3.3V (see feedback path note above)
-- IXDN604 x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
+- IXDN630MCI x2, GDT, gate resistors/diodes, TFT, encoder, LEDs, NTC
 - GDT primary protection network (clamp diodes + DC-block caps) — carried
   over from the proven ESP32 build, now applied symmetrically to BOTH
   channels (see dedicated section above). Need: 4x 1N5819, 4x 1µF ceramic
@@ -324,7 +324,7 @@ graph TD
   no cables between Nucleo and driver components
 - Keep PA8/PB13 → IRLB8721 gate traces as short as physically possible (this
   was the exact class of problem that caused the v1 debug session)
-- IRLB8721s and IXDN604s clustered close together, short traces between them
+- IRLB8721s and IXDN630MCIs clustered close together, short traces between them
 - TO-220 packages are easy to hand-solder reliably — much less risk than the
   SOIC-8 isolators that caused the v1 rework
 - TFT + encoder can stay on longer leads (low-speed, non-critical signals)
@@ -348,5 +348,5 @@ graph TD
   pulldown — both diagnosed and fixed in this doc, needs a fresh capture to
   confirm). Check rise/fall time and dead-time survives intact.
 - Watch the ~37% overshoot / undershoot-to--0.55V ringing seen in the 10kΩ
-  test — may improve once IXDN604 is wired in (adds damping) and wiring is
+  test — may improve once IXDN630MCI is wired in (adds damping) and wiring is
   tightened. Add a small Schottky clamp to GND on the drain node if it persists.

@@ -116,7 +116,7 @@ Results on the AD3 (probing PA8 / PB13):
 - Test BKIN: pull PB12 low, confirm PWM outputs die and state goes fault.
 
 ### Phase 4 — Gate drive (isolated, low voltage)
-- Connect Si8621 → IXDN604 → GDT, but power the H-bridge from a LOW voltage
+- Connect Si8621 → IXDN630MCI → GDT, but power the H-bridge from a LOW voltage
   bench supply (e.g., 12–24V through the variac at minimum).
 - Probe the GDT secondaries / IGBT gates on the AD3.
 - Tune dead-time to the edge while watching for shoot-through current.

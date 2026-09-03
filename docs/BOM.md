@@ -108,7 +108,7 @@ see `SHIELD_LAYOUT.md` for the as-built power tree).
 
 | Qty | Part | Value/Type | Package | Purpose | Notes |
 |-----|------|-----------|---------|---------|-------|
-| 2 | IXDN604 | IXDN604PI | TO-220-5 | Non-inverting gate driver (9A peak) | Both same type, no IXDI needed |
+| 2 | IXDN630MCI | IXDN630MCI | TO-220-5 | Non-inverting gate driver (30A peak source/sink) | Both same type, no IXDI needed |
 | 2 | Capacitor | 100nF ceramic | Through-hole | IXDN VCC decoupling (close to pin 1) | |
 | 2 | Capacitor | 10µF electrolytic | Through-hole | IXDN VCC bulk (near each chip) | 25V rated |
 | 2 | Resistor | 10kΩ 1/4W | Through-hole | Pulldown on IXDN IN (pin 4) | Keeps gates OFF if signal absent |
@@ -153,7 +153,7 @@ see `SHIELD_LAYOUT.md` for the as-built power tree).
 **Received / in hand:**
 - Nucleo-F446RE, 2x38 morpho headers (soldered)
 - 2x Si8621BB-B-IS (mounted on ADuM1201-style breakouts, decoupling + HF caps on)
-- 2x IXDN604 gate drivers
+- 2x IXDN630MCI gate drivers
 - NTC thermistor (wired, verified reading correctly)
 - TFT display (wired, verified working)
 - Rotary encoder + button (wired, verified working)

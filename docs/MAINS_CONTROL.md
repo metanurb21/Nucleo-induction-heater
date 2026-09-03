@@ -114,7 +114,7 @@ switching immediately. The contactor just removes bus power as a secondary safet
 ## Physical Notes
 
 - The relay, optocoupler, and flyback diode mount on the **lower perf** with the
-  Si8621 / IXDN604 / 74HC14 (all share the single star ground)
+  Si8621 / IXDN630MCI / 74HC14 (all share the single star ground)
 - The 120V wiring to/from the relay contacts should use proper gauge wire and
   be physically separated from all low-voltage traces
 - The isolation transformer can be chassis-mounted off-board with wires to the PCB
