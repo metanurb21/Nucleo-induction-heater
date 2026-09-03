@@ -30,11 +30,11 @@ graph LR
     PA8["PA8 (TIM1_CH1)<br/>3.3V logic"] -->|"short trace"| Q1G["IRLB8721 #1<br/>Gate"]
     PB13["PB13 (TIM1_CH1N)<br/>3.3V logic"] -->|"short trace"| Q2G["IRLB8721 #2<br/>Gate"]
 
-    V5A["5V"] -->|"10kΩ pull-up"| Q1D["IRLB8721 #1<br/>Drain (output node)"]
-    V5B["5V"] -->|"10kΩ pull-up"| Q2D["IRLB8721 #2<br/>Drain (output node)"]
+    V5A["5V"] -->|"470Ω pull-up"| Q1D["IRLB8721 #1<br/>Drain = output node"]
+    V5B["5V"] -->|"470Ω pull-up"| Q2D["IRLB8721 #2<br/>Drain = output node"]
 
-    Q1D -->|"10kΩ pulldown"| IXDN1["IXDN604 #1<br/>IN (pin 4)"]
-    Q2D -->|"10kΩ pulldown"| IXDN2["IXDN604 #2<br/>IN (pin 4)"]
+    Q1D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN1["IXDN604 #1<br/>IN (pin 4)"]
+    Q2D -->|"direct wire, THEN separate 100kΩ branch to GND"| IXDN2["IXDN604 #2<br/>IN (pin 4)"]
 
     Q1S["IRLB8721 #1 Source"] --> GND1["GND"]
     Q2S["IRLB8721 #2 Source"] --> GND2["GND"]
@@ -44,6 +44,38 @@ graph LR
     PROT1 --> GDT1["GDT Primary A"]
     PROT2 --> GDT2["GDT Primary B"]
 ```
+
+> **RESISTOR VALUES UPDATED (AD3-verified) — pull-up 10kΩ → 470Ω, pulldown
+> 10kΩ → 100kΩ.** Bench test with only the 10kΩ pull-up in place showed a
+> slow RC-dominated rising edge (3.26µs measured rise time, 63ns fall —
+> asymmetric because the MOSFET actively pulls the falling edge but the rising
+> edge is passive RC charging through the pull-up). Backing out the time
+> constant: RC≈1.48µs at R=10k implies ~148pF of parasitic capacitance on the
+> node — higher than expected, most likely the IRLB8721's own Coss (larger
+> TO-220 power MOSFETs have more output capacitance than small-signal parts;
+> traded off against easy hand-soldering and logic-level gate threshold).
+> Lowering the pull-up to 470Ω cuts the rise time to ~155ns (2.2×R×C),
+> fitting inside the 300ns dead-time budget. Current draw at 470Ω when the
+> MOSFET is ON: 5V/470Ω≈10.6mA per channel — trivial for the 5V/5A supply.
+>
+> **⚠️ CRITICAL — do not use equal pull-up/pulldown values.** If the pulldown
+> at the IXDN604 input were also 10kΩ, it would form a resistive DIVIDER with
+> the pull-up (not clean logic levels): 5V×10k/(10k+10k)=2.5V when the MOSFET
+> is off — well below the IXDN604's VIH=3.5V, guaranteed to fail. The
+> pulldown must be much WEAKER (higher resistance) than the pull-up so it
+> barely loads the node in normal operation: at 470Ω pull-up + 100kΩ
+> pulldown, the node still reaches ~4.98V (negligible ~1% drop), while still
+> providing a defined LOW (gate driver off, safe) if the pull-up/MOSFET path
+> is ever disconnected.
+>
+> **Ringing observed:** 36-38% overshoot and excursions to ~-0.55V on both
+> channels during this test — likely LC ringing from the fast (63ns) MOSFET
+> turn-off interacting with stray wiring inductance on the current flying
+> leads. Watch this once the IXDN604 is wired in (its input loading should
+> add damping) and once final board wiring is tightened (shorter leads, less
+> loop inductance). If it persists, a small Schottky (e.g. 1N5819) clamped
+> from the drain node to GND would tame it — same principle as the GDT
+> protection network, just scaled down for this node.
 
 **CT / burden circuit — CONFIRMED, reused from the proven ESP32 build:** work
 coil leg → 2kV cap → 40T ferrite toroid CT → 100Ω 100W burden resistor. This
@@ -67,7 +99,7 @@ clear both with margin, without exceeding ~3.8V absolute max on peaks.
 |-----------|-------------|
 | Gate | Nucleo PA8 or PB13 (3.3V logic), directly, short trace |
 | Source | Ground |
-| Drain | 10kΩ pull-up to 5V **=** the level-shifted output node → to IXDN604 IN |
+| Drain | **470Ω** pull-up to 5V **=** the level-shifted output node → direct wire to IXDN604 IN, plus a separate **100kΩ** branch to GND |
 
 > **⚠️ THIS CIRCUIT INVERTS THE SIGNAL.** MOSFET off (gate low) → drain pulled
 > to 5V (HIGH). MOSFET on (gate high) → drain pulled to GND (LOW). So Nucleo
@@ -77,17 +109,19 @@ clear both with margin, without exceeding ~3.8V absolute max on peaks.
 > in `PwmDrive::init()` so the Nucleo pins output pre-inverted logic, which
 > this circuit un-inverts back to correct polarity at the IXDN604. Complementary
 > relationship between the two channels is preserved either way (invert both).
-> **TODO: apply this firmware change before first power-up of this path.**
+> **Already applied and verified in firmware.**
 >
-> 10kΩ pulldown stays on each IXDN604 input (fail-safe if a MOSFET drain node
-> is ever disconnected — pulls IXDN604 input low = gate off, safe default).
+> **100kΩ pulldown** stays on each IXDN604 input (fail-safe if a MOSFET drain
+> node is ever disconnected — pulls IXDN604 input low = gate off, safe
+> default). Must be a SEPARATE branch to GND, NOT in series between the
+> drain and the IXDN604 input (that miswiring caused a slow RC sawtooth
+> during bench test — see resistor-value note above for the full story).
 
-**Speed note:** IRLB8721 typical turn-on/off ~2-4ns (fast) but the RC formed
-by the 10kΩ pull-up and MOSFET/wiring capacitance dominates actual rise time
-— expect tens of ns, similar order to what was measured through the Si8621
-in earlier testing. Verify on the AD3 once built; if rise time eats too much
-into the 300ns dead-time budget, drop the pull-up to 4.7kΩ or lower (faster
-RC, more current draw — fine at this scale).
+**Speed note (AD3-verified):** with the corrected 470Ω pull-up, rise time
+should be ~155ns, well inside the 300ns dead-time budget. Original 10kΩ
+pull-up measured 3.26µs rise time — see the detailed note above for why and
+the fix. Fall time was always fast (~63ns, MOSFET actively driven) and is
+unaffected by the pull-up value.
 
 ## GDT Primary Protection Network (carried over from ESP32 build, PROVEN)
 
@@ -232,8 +266,11 @@ graph TD
 **Added:**
 - 2x **IRLB8721** (logic-level N-MOSFET, TO-220) — PWM level-shift, one per
   channel. **In parts drawer, confirmed, no order needed.**
-- 2x 10kΩ pull-up resistors (MOSFET drain → 5V, forms the level-shift output)
-- 2x 10kΩ pulldown resistors (level-shift output → IXDN604 IN, fail-safe)
+- 2x **470Ω** pull-up resistors (MOSFET drain → 5V, forms the level-shift
+  output). *AD3-verified value — was 10kΩ, too slow, see notes above.*
+- 2x **100kΩ** pulldown resistors (level-shift output → GND, fail-safe branch,
+  NOT in series with the IXDN604 input). *Was 10kΩ — would have formed a
+  voltage divider with the pull-up and failed to reach IXDN604's VIH.*
 - 1x pull-up resistor (10kΩ to 3.3V) on BKIN, temporary until OCP comparator exists
 
 **Unchanged:**
@@ -273,5 +310,10 @@ graph TD
   proven CT/burden hardware, different downstream circuit than before.
 - Design/wire the OCP comparator (currently just a 3.3V pull-up placeholder
   on BKIN)
-- Verify on AD3: rise/fall time through the IRLB8721 level-shift, confirm
-  dead-time survives intact (same check as was done for the Si8621 in v1)
+- **Re-verify on AD3 with corrected 470Ω pull-up / 100kΩ pulldown values**
+  (first pass with 10kΩ/10kΩ showed a slow RC rise and a miswired series
+  pulldown — both diagnosed and fixed in this doc, needs a fresh capture to
+  confirm). Check rise/fall time and dead-time survives intact.
+- Watch the ~37% overshoot / undershoot-to--0.55V ringing seen in the 10kΩ
+  test — may improve once IXDN604 is wired in (adds damping) and wiring is
+  tightened. Add a small Schottky clamp to GND on the drain node if it persists.
