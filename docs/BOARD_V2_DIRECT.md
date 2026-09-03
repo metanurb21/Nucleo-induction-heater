@@ -406,30 +406,54 @@ The EMI filter (YS36Q1AN-50A type, on order, ETA Sept 8) is a chassis-mount
 part, not on this board — see `MAINS_CONTROL.md` for its placement and the
 mandatory earth-bond requirement. Everything below IS on Board v2.
 
-### Contactor control signal chain
+### Contactor control — using an all-in-one relay module
+
+**CORRECTION: using a pre-built relay module board, not discrete opto + diode
++ relay.** These common modules (e.g. Songle SRD-05VDC based) already
+integrate the optocoupler, flyback diode, driver transistor, status LED, and
+sometimes an onboard regulator. Just 4 pins to interface with: **VCC, GND, IN,
+and the relay contacts (COM/NO/NC).** Much simpler wiring than the discrete
+version — the module does all of it internally.
 
 ```mermaid
 graph LR
-    PB14["PB14 (GPIO)<br/>Nucleo, direct trace"] -->|"330Ω"| OPTO["Optocoupler<br/>LED side (4N25/PC817)"]
-    OPTO -->|"5V rail"| RELAY["5V Logic Relay<br/>coil"]
-    RELAY -->|"120V AC"| COIL["Contactor Coil<br/>(FUJI 100A)"]
+    PB14["PB14 (GPIO)<br/>Nucleo, direct trace"] -->|"direct, no series R needed*"| IN["Relay Module<br/>IN pin"]
+    V5["5V rail"] --> VCC["Relay Module<br/>VCC pin"]
+    GND["GND"] --> GNDM["Relay Module<br/>GND pin"]
+    IN -.->|"module's onboard<br/>opto + driver"| RELAY_OUT["Relay Module<br/>COM/NO contacts"]
+    RELAY_OUT -->|"120V AC"| COIL["Contactor Coil<br/>(FUJI 100A)"]
     COIL --> MAINS["Mains → H-Bridge"]
 ```
 
-| Component | Wiring |
-|-----------|--------|
-| PB14 (Nucleo) | → 330Ω → Optocoupler LED anode |
-| Optocoupler LED cathode | → GND |
-| Optocoupler transistor collector | → Relay coil (+), also → 5V through the coil |
-| Optocoupler transistor emitter | → GND |
-| Flyback diode (1N4148) | Across relay coil: cathode to 5V side, anode to collector side |
-| Relay NO contacts | 120V AC hot in/out to contactor coil |
+| Relay module pin | Connects to |
+|-------------------|-------------|
+| VCC | 5V rail |
+| GND | GND (shared board ground) |
+| IN | PB14 (Nucleo), direct trace |
+| COM | 120V AC hot (mains side) |
+| NO (normally open) | Contactor coil (+) — closes when PB14 drives the module active |
 
-> No JST or isolator in this path — PB14 wires directly to the optocoupler
-> LED on the same board. The optocoupler itself still provides isolation
-> between the 3.3V logic and the 120V-switching relay coil circuit, which is
-> the important boundary here (not board-to-board isolation, which v2 dropped
-> in favor of single-ground simplicity).
+> **Check the module's IN pin logic level and active polarity before wiring.**
+> Most common cheap relay modules are **active-LOW** on IN (module energizes
+> when IN is pulled to GND, not driven HIGH) — this is the OPPOSITE of what
+> the current firmware assumes. `MainsControl.cpp` currently does
+> `digitalWrite(PIN_CONTACTOR, HIGH)` to energize. **Verify your specific
+> module's polarity (check its silkscreen/datasheet, or test with a meter)
+> before connecting PB14** — if it's active-LOW, either invert the logic in
+> firmware or confirm the module has a jumper/option for active-HIGH.
+>
+> Also verify the **IN pin's input impedance** — many of these modules have
+> an onboard optocoupler with its own current-limiting resistor already
+> built in, so PB14 may be able to drive IN directly with no external
+> series resistor needed. Some modules do want a resistor if driven from a
+> lower-current logic pin — check the specific module's input circuit (often
+> printed on the PCB or in its datasheet) before assuming direct-drive is safe.
+>
+> No JST or isolator needed here — PB14 wires directly to the module's IN pin
+> on the same board. The module's onboard optocoupler still provides the
+> logic-to-relay-coil isolation boundary, which is the important one (not
+> board-to-board isolation, which v2 dropped in favor of single-ground
+> simplicity).
 
 ### AC sensing (zero-cross / mains presence)
 
@@ -476,10 +500,7 @@ graph LR
 
 | Qty | Part | Value/Type | Notes |
 |-----|------|-----------|-------|
-| 1 | Optocoupler | 4N25 or PC817 | Isolates Nucleo from relay coil, slow speed fine |
-| 1 | Resistor | 330Ω 1/4W | Opto LED current limit |
-| 1 | Diode | 1N4148 | Flyback protection across relay coil |
-| 1 | 5V Logic Relay | SRD-05VDC or similar, NO contacts 250VAC 10A+ | Switches 120V AC to contactor coil |
+| 1 | Relay module | All-in-one (opto+diode+driver+LED built in), e.g. SRD-05VDC based | VCC/GND/IN/COM/NO/NC pins. **Check active-HIGH vs active-LOW on IN before wiring.** |
 | 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
 | 1 | Diode | 1N4007 | Rectifies TX secondary |
 | 1 | Resistor | 27kΩ 1/4W | Divider upper leg — **TBD, verify on AD3** |
@@ -518,12 +539,23 @@ wiring described above.
 
 ### Still TODO on this section
 
+- **⚠️ CHECK RELAY MODULE IN-PIN POLARITY BEFORE CONNECTING PB14.** Current
+  firmware (`MainsControl.cpp`) drives PB14 HIGH to energize the contactor.
+  Many common relay modules are active-LOW on IN (energize when pulled to
+  GND). If this module is active-LOW and wired without checking, the
+  contactor logic would be INVERTED — energized at boot (dangerous) and
+  de-energized when firmware thinks it's turning ON. Verify polarity with a
+  meter or the module's datasheet/silkscreen before wiring PB14 to IN. If
+  it's active-LOW, either flip the firmware logic (`digitalWrite` HIGH/LOW
+  swapped in `MainsControl::energize()`/`deEnergize()`) or check for an
+  active-HIGH jumper option on the module.
 - **Verify the 27kΩ/10kΩ AC-sense divider on the AD3** once the isolation TX
   is wired — same "don't trust the carried-over value" caution as the CT
   divider. Measure real TX secondary voltage, confirm ADC-safe range and
   zero-cross threshold margin.
-- Confirm optocoupler part on hand (4N25/PC817) and relay part (SRD-05VDC or
-  equivalent) are in the parts drawer or need ordering.
+- Confirm the exact relay module part/model on hand, note its IN-pin
+  logic level and whether it needs an external series resistor (many
+  modules have this built in already).
 - `MAINS_CONTROL.md` is now superseded by this section for wiring purposes —
   kept for its EMI filter placement/earth-bond info and the original v1
   BOM/pin reference, but this doc is the current source of truth for Board v2.
