@@ -386,3 +386,144 @@ in the diagnostic sequence (before extensive board rework) to rule out
 instrumentation. A real circuit fault follows the physical node when probes
 are swapped; an instrument fault follows the scope channel. Cross-check
 against a bench scope if available and results still don't make sense.
+
+---
+
+## HV Side — Contactor Control & AC Sensing (v2, direct wiring)
+
+Adapted from `docs/MAINS_CONTROL.md` (v1) for the Board v2 architecture:
+no JST harness, no Si8621 isolators — direct wiring on one perf, single
+shared ground throughout. This section is the authoritative wiring for
+the mains control portion of Board v2.
+
+### System path
+
+```
+AC Mains → EMI Filter → Contactor → Rectifier → DC Bus → H-Bridge
+```
+
+The EMI filter (YS36Q1AN-50A type, on order, ETA Sept 8) is a chassis-mount
+part, not on this board — see `MAINS_CONTROL.md` for its placement and the
+mandatory earth-bond requirement. Everything below IS on Board v2.
+
+### Contactor control signal chain
+
+```mermaid
+graph LR
+    PB14["PB14 (GPIO)<br/>Nucleo, direct trace"] -->|"330Ω"| OPTO["Optocoupler<br/>LED side (4N25/PC817)"]
+    OPTO -->|"5V rail"| RELAY["5V Logic Relay<br/>coil"]
+    RELAY -->|"120V AC"| COIL["Contactor Coil<br/>(FUJI 100A)"]
+    COIL --> MAINS["Mains → H-Bridge"]
+```
+
+| Component | Wiring |
+|-----------|--------|
+| PB14 (Nucleo) | → 330Ω → Optocoupler LED anode |
+| Optocoupler LED cathode | → GND |
+| Optocoupler transistor collector | → Relay coil (+), also → 5V through the coil |
+| Optocoupler transistor emitter | → GND |
+| Flyback diode (1N4148) | Across relay coil: cathode to 5V side, anode to collector side |
+| Relay NO contacts | 120V AC hot in/out to contactor coil |
+
+> No JST or isolator in this path — PB14 wires directly to the optocoupler
+> LED on the same board. The optocoupler itself still provides isolation
+> between the 3.3V logic and the 120V-switching relay coil circuit, which is
+> the important boundary here (not board-to-board isolation, which v2 dropped
+> in favor of single-ground simplicity).
+
+### AC sensing (zero-cross / mains presence)
+
+```mermaid
+graph LR
+    AC["120V AC Mains"] --> TX["120V:12V<br/>Isolation TX"]
+    TX -->|"~12VAC"| DIODE["Rectifier Diode<br/>(1N4007)"]
+    DIODE -->|"~12VDC peak,<br/>rectified half-sine"| DIV["Resistor Divider<br/>27kΩ / 10kΩ"]
+    DIV -->|"~0-3.2V"| FILT["100nF filter"]
+    FILT --> PC1["PC1 (ADC1_IN11)<br/>Nucleo, direct trace"]
+```
+
+| Component | Wiring |
+|-----------|--------|
+| Isolation TX secondary | → 1N4007 anode |
+| 1N4007 cathode | → divider node (27kΩ top leg) |
+| Divider: 27kΩ | Top leg, from rectifier cathode to divider midpoint |
+| Divider: 10kΩ | Bottom leg, from divider midpoint to GND |
+| Divider midpoint | → 100nF to GND (filter), → PC1 direct trace |
+
+> **No smoothing cap on the rectifier output** — the ADC needs to see the
+> rectified half-sine wave (dips near 0V twice per AC cycle) to detect
+> zero-crossings. Only the small 100nF filter cap is present, sized to knock
+> down HF noise without flattening the 120Hz envelope.
+>
+> **Divider values (27kΩ/10kΩ) — carried over from `MAINS_CONTROL.md`,
+> NOT yet AD3-verified for this specific TX.** Same caution as the CT/74HC14
+> divider: measure actual TX secondary voltage on the AD3 once wired, confirm
+> the divided signal reaches 3.3V-safe levels without exceeding it, and stays
+> above the zero-cross detection threshold (`ZEROCROSS_THRESHOLD` in
+> `config.h`) on the low side.
+
+### Pin assignments (v2, direct traces — no JST)
+
+| Function | Nucleo Pin | Morpho | Direct trace to |
+|----------|-----------|--------|------------------|
+| Contactor control | PB14 | CN10-28 | Optocoupler LED (330Ω in series) |
+| AC sense | PC1 (ADC1_IN11) | CN7-36 | Divider midpoint (100nF filter) |
+
+> PA4 is ADC_VBUS (bus voltage) — do NOT confuse with AC sense (PC1). Matches
+> `PIN_ADC_AC` in `config.h`.
+
+### BOM additions for this section
+
+| Qty | Part | Value/Type | Notes |
+|-----|------|-----------|-------|
+| 1 | Optocoupler | 4N25 or PC817 | Isolates Nucleo from relay coil, slow speed fine |
+| 1 | Resistor | 330Ω 1/4W | Opto LED current limit |
+| 1 | Diode | 1N4148 | Flyback protection across relay coil |
+| 1 | 5V Logic Relay | SRD-05VDC or similar, NO contacts 250VAC 10A+ | Switches 120V AC to contactor coil |
+| 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
+| 1 | Diode | 1N4007 | Rectifies TX secondary |
+| 1 | Resistor | 27kΩ 1/4W | Divider upper leg — **TBD, verify on AD3** |
+| 1 | Resistor | 10kΩ 1/4W | Divider lower leg — **TBD, verify on AD3** |
+| 1 | Capacitor | 100nF ceramic | Filter on ADC input, NOT a smoothing cap |
+
+### Startup / shutdown sequence (unchanged logic, v2 wiring)
+
+**Startup:**
+1. Verify NTC temperature below `TEMP_SHUTDOWN_C`
+2. Verify mains presence (AC sense ADC reading above `AC_PRESENT_THRESHOLD`)
+3. Optionally wait for zero-crossing (reduces contactor inrush/arcing)
+4. Drive PB14 HIGH → opto → relay → contactor energizes
+5. Wait for DC bus charge (`BUS_CHARGE_MS`)
+6. Enable PWM (TIM1 outputs active)
+
+**Shutdown (fastest first):**
+1. Kill PWM — TIM1 BKIN hardware break (~6ns) or firmware `disableOutputs()`
+2. Drop contactor — PB14 LOW → opto off → relay off → contactor drops
+3. Log fault reason (OCP/temp/mains/manual) for display
+
+This logic is already implemented in `StateManager.cpp` / `MainsControl.cpp`
+from the firmware scaffold — no firmware changes needed, just the physical
+wiring described above.
+
+### Physical layout notes
+
+- Relay, optocoupler, flyback diode: same board, share the single ground
+  with everything else (no separate isolated ground domain in v2)
+- 120V wiring to/from the relay contacts: proper gauge wire, physically
+  separated from low-voltage traces on the board
+- Isolation TX can be chassis-mounted off-board with wires to the perf if it
+  doesn't fit the footprint
+- Contactor coil wires: spade or screw terminals, not soldered joints (the
+  contactor vibrates when energized)
+
+### Still TODO on this section
+
+- **Verify the 27kΩ/10kΩ AC-sense divider on the AD3** once the isolation TX
+  is wired — same "don't trust the carried-over value" caution as the CT
+  divider. Measure real TX secondary voltage, confirm ADC-safe range and
+  zero-cross threshold margin.
+- Confirm optocoupler part on hand (4N25/PC817) and relay part (SRD-05VDC or
+  equivalent) are in the parts drawer or need ordering.
+- `MAINS_CONTROL.md` is now superseded by this section for wiring purposes —
+  kept for its EMI filter placement/earth-bond info and the original v1
+  BOM/pin reference, but this doc is the current source of truth for Board v2.

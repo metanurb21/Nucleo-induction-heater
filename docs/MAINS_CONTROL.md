@@ -1,5 +1,13 @@
 # Mains Contactor Control & Safety Shutdown
 
+> **NOTE (Board v2):** wiring in this doc reflects the v1 (JST harness +
+> Si8621 isolators) architecture. `BOARD_V2_DIRECT.md` has the current,
+> adapted wiring for the direct-to-morpho design (no JST, single ground) —
+> see its "HV Side — Contactor Control & AC Sensing" section, which is now
+> the source of truth for wiring. This doc remains authoritative for the
+> **EMI filter placement, mandatory earth-bond requirement, and the original
+> BOM/logic reference** — those haven't changed.
+
 ## Mains Path Order (system level)
 
 ```
