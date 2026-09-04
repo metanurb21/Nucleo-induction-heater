@@ -389,6 +389,71 @@ against a bench scope if available and results still don't make sense.
 
 ---
 
+## ⚠️ OPEN ISSUES — RESUME HERE
+
+Two unresolved threads from the AC-sense wiring session. Do NOT reconnect
+PC1 to the AC-sense divider, and treat the NTC reading with suspicion,
+until both are resolved.
+
+### Issue 1 — AC-sense divider resistor value (in progress)
+
+Resized twice (27k→22k→8.2k), see the divider note above for full history.
+**Next step:** swap in the 8.2kΩ resistor, re-verify on the AD3 that the
+divider midpoint peaks near 3.0V with the full circuit (TX+rectifier+
+divider+filter) connected. Do not reconnect to PC1 until confirmed.
+
+### Issue 2 — PC1 overvoltage exposure (unresolved — safety relevant)
+
+PC1 was briefly connected to the AC-sense divider while it was still
+producing a 5.5V peak (before the mismatch was caught) — above the
+STM32F446RE's standard I/O absolute max (~3.6V). Could not conclusively
+verify from datasheet lookups whether PC1 specifically is a 5V-tolerant
+(FT) pin (some STM32F4 pins are FT, up to 4.0V abs max; not confirmed
+whether PC1 is one). Disconnected once discovered; not appearing to be
+outright dead, but NOT fully cleared either.
+
+**What was checked so far:** display, LEDs, encoder, general board
+function all seem OK by inspection. NTC (PC0, same ADC1 peripheral)
+is behaving anomalously (see Issue 3) but causation vs. coincidence with
+the PC1 event is NOT established.
+
+**Still TODO to fully clear this:**
+- Multimeter continuity/leakage check on PC1 (Nucleo powered OFF): measure
+  resistance PC1-to-GND and PC1-to-3.3V, compare to a known-good pin as a
+  baseline if possible.
+- Once the divider is fixed at 8.2kΩ and AD3-verified safe (~3V peak),
+  reconnect PC1 and watch `Sensing::readAcRaw()` / the "MAINS" display field
+  over time — confirm it tracks the AC waveform's zero-crossings sensibly
+  rather than reading garbage or pegging at max.
+- Do not consider this resolved until both of the above look clean.
+
+### Issue 3 — NTC reading anomaly (unresolved, in-progress diagnostic)
+
+NTC clamped to a soldering iron handle read ~41-46°C over several minutes
+(handle independently measured at 30°C via IR thermometer — consistent,
+so NOT a sensor-to-object contact issue). **Unclamped in free air for a
+couple minutes, the reading is SLOWLY RISING instead of falling toward the
+~27.8°C room temp (82°F on the thermostat) — backwards from expected
+physics.** This is a real anomaly, not just thermal lag/smoothing.
+
+**Diagnostic in progress, next step when resuming:** measure DC voltage
+directly at the NTC divider midpoint (the node feeding PC0) with a
+multimeter, independent of the Nucleo/firmware. Calculated expected value
+at 27.8°C ambient (R_fixed=10k, R0=10k@25°C, Beta=3435): **≈1.56V**.
+
+- If multimeter reads close to ~1.56V → the analog NTC circuit itself is
+  fine; the fault would be downstream (ADC reading, firmware conversion,
+  or possibly the ADC1 peripheral affected by the PC1 overvoltage event
+  since PC0 and PC1 share ADC1 — this would tie Issues 2 and 3 together).
+- If multimeter reads notably different from ~1.56V → the analog circuit
+  itself has a fault (solder joint, wrong resistor, damaged NTC lead from
+  handling during this session) — unrelated to the PC1 incident.
+
+**This measurement was not yet taken when the session paused — it's the
+very next thing to do when resuming this thread.**
+
+---
+
 ## HV Side — Contactor Control & AC Sensing (v2, direct wiring)
 
 Adapted from `docs/MAINS_CONTROL.md` (v1) for the Board v2 architecture:
@@ -481,25 +546,34 @@ graph LR
 > zero-crossings. Only the small 100nF filter cap is present, sized to knock
 > down HF noise without flattening the 120Hz envelope.
 >
-> **DIVIDER RECOMPUTED from measured TX output — 27kΩ → 22kΩ (10kΩ
-> unchanged).** Multimeter measurement: TX secondary reads **7.3V AC**
-> (unloaded) with 120V AC on the primary — lower than the "12V" nameplate,
-> which is normal for a small isolation TX (nameplate often reflects rated
-> load current, not open-circuit output; also subject to line voltage
-> variance). Designing the divider around the REAL measured value, not the
-> nameplate:
+> **DIVIDER — SECOND CORRECTION NEEDED, 22kΩ still too low a ratio.**
+> First pass used 27kΩ (from `MAINS_CONTROL.md`, too high a ratio → 5.4V
+> peak p-p seen at midpoint, exceeded target). Recalculated to 22kΩ using
+> the measured 7.3VAC TX output, but AD3 testing with the FULL circuit
+> (TX + rectifier + 22kΩ/10kΩ divider + 100nF filter) still measured
+> **Maximum 5.5V, Peak2Peak 5.41V** at the divider midpoint — higher than
+> the ~3.0V target, and confirmed independently via multimeter DC average
+> (2.392V, consistent with a half-wave-rectified 60Hz waveform peaking
+> near 5.5V). The hand-calculation from 7.3VAC did not match the measured
+> in-circuit peak — likely the TX output sags/rises differently once loaded
+> by the actual rectifier+divider vs. the open-circuit multimeter reading.
 >
-> - Peak after 1N4007 rectification: `7.3V × √2 − diode drop ≈ 9.6-9.8V peak`
-> - Target ~3.0V at the ADC (safe margin below the 3.6V absolute max)
-> - Required ratio: `3.0 / 9.7 ≈ 0.309` → with R_bottom=10kΩ fixed,
->   `R_top ≈ 22.4kΩ` → **use standard 22kΩ**
-> - Check: `9.7V × 10k/(22k+10k) ≈ 3.03V` at peak — good margin under max,
->   still comfortably above the zero-cross threshold at the troughs
+> **Resized directly from the AD3-confirmed real peak (5.5V) instead of
+> back-calculating from TX voltage:**
+> - Target ~3.0V at the ADC: `3.0 / 5.5 ≈ 0.545` ratio
+> - With R_bottom=10kΩ fixed: `R_top ≈ 8.2kΩ` (was 22kΩ, now 8.2kΩ)
+> - Check: `5.5V × 10k/(8.2k+10k) ≈ 3.02V` — good margin under 3.6V max
 >
-> **Swap the 27kΩ for 22kΩ, keep 10kΩ.** Then verify on the AD3 with the
-> rectifier connected: confirm the divided signal peaks near 3V and dips low
-> near each zero-crossing, same "measure before trusting" discipline as the
-> CT/74HC14 divider.
+> **⚠️ NOT YET RE-VERIFIED ON AD3 with the 8.2kΩ value in place.** Given two
+> rounds of the hand-calculated value not matching the measured in-circuit
+> result, do NOT trust 8.2kΩ as final without a fresh AD3 capture after
+> swapping the resistor. This is the next step when resuming.
+>
+> **⚠️ SAFETY NOTE — PC1 exposure incident:** PC1 was connected to this
+> divider (5.5V peak) before the mismatch was caught, then disconnected.
+> Not yet 100% confirmed whether this caused any damage — see "PC1
+> overvoltage exposure" note below. Do NOT reconnect PC1 to this divider
+> until the 8.2kΩ swap is verified safe on the AD3 first.
 
 ### Pin assignments (v2, direct traces — no JST)
 
@@ -518,8 +592,8 @@ graph LR
 | 1 | Relay module | Teyleten 1-Channel Opto 3V/3.3V Relay "High Level Driver" (Amazon B07XGZSYJV) | VCC/GND/IN/COM/NO pins. Confirmed active-HIGH, 3.3V logic native — matches firmware and Nucleo I/O directly. |
 | 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
 | 1 | Diode | 1N4007 | Rectifies TX secondary |
-| 1 | Resistor | 22kΩ 1/4W | Divider upper leg — recomputed from measured 7.3V AC TX output (was 27kΩ), still verify final on AD3 |
-| 1 | Resistor | 10kΩ 1/4W | Divider lower leg — unchanged |
+| 1 | Resistor | **8.2kΩ** 1/4W | Divider upper leg — 3rd value (27k→22k→8.2k), resized from AD3-measured real peak (5.5V), NOT YET RE-VERIFIED |
+| 1 | Resistor | 10kΩ 1/4W | Divider lower leg — unchanged throughout |
 | 1 | Capacitor | 100nF ceramic | Filter on ADC input, NOT a smoothing cap |
 | 1 | Illuminated toggle switch | 250V/125V dual-rated, 15A/20A | Manual 110V master control, gates TX primary + relay COM branches — panel mount |
 
