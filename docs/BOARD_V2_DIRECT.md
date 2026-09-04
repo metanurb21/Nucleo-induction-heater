@@ -461,18 +461,18 @@ graph LR
 
 ```mermaid
 graph LR
-    AC["120V AC Mains"] --> TX["120V:12V<br/>Isolation TX"]
-    TX -->|"~12VAC"| DIODE["Rectifier Diode<br/>(1N4007)"]
-    DIODE -->|"~12VDC peak,<br/>rectified half-sine"| DIV["Resistor Divider<br/>27kΩ / 10kΩ"]
-    DIV -->|"~0-3.2V"| FILT["100nF filter"]
+    AC["120V AC Mains"] --> TX["Isolation TX<br/>measured 7.3VAC out"]
+    TX -->|"7.3VAC"| DIODE["Rectifier Diode<br/>(1N4007)"]
+    DIODE -->|"~9.7V peak,<br/>rectified half-sine"| DIV["Resistor Divider<br/>22kΩ / 10kΩ"]
+    DIV -->|"~0-3.0V"| FILT["100nF filter"]
     FILT --> PC1["PC1 (ADC1_IN11)<br/>Nucleo, direct trace"]
 ```
 
 | Component | Wiring |
 |-----------|--------|
-| Isolation TX secondary | → 1N4007 anode |
-| 1N4007 cathode | → divider node (27kΩ top leg) |
-| Divider: 27kΩ | Top leg, from rectifier cathode to divider midpoint |
+| Isolation TX secondary | → 1N4007 anode (measured 7.3VAC unloaded, not the 12V nameplate) |
+| 1N4007 cathode | → divider node (22kΩ top leg) |
+| Divider: 22kΩ | Top leg, from rectifier cathode to divider midpoint |
 | Divider: 10kΩ | Bottom leg, from divider midpoint to GND |
 | Divider midpoint | → 100nF to GND (filter), → PC1 direct trace |
 
@@ -481,12 +481,25 @@ graph LR
 > zero-crossings. Only the small 100nF filter cap is present, sized to knock
 > down HF noise without flattening the 120Hz envelope.
 >
-> **Divider values (27kΩ/10kΩ) — carried over from `MAINS_CONTROL.md`,
-> NOT yet AD3-verified for this specific TX.** Same caution as the CT/74HC14
-> divider: measure actual TX secondary voltage on the AD3 once wired, confirm
-> the divided signal reaches 3.3V-safe levels without exceeding it, and stays
-> above the zero-cross detection threshold (`ZEROCROSS_THRESHOLD` in
-> `config.h`) on the low side.
+> **DIVIDER RECOMPUTED from measured TX output — 27kΩ → 22kΩ (10kΩ
+> unchanged).** Multimeter measurement: TX secondary reads **7.3V AC**
+> (unloaded) with 120V AC on the primary — lower than the "12V" nameplate,
+> which is normal for a small isolation TX (nameplate often reflects rated
+> load current, not open-circuit output; also subject to line voltage
+> variance). Designing the divider around the REAL measured value, not the
+> nameplate:
+>
+> - Peak after 1N4007 rectification: `7.3V × √2 − diode drop ≈ 9.6-9.8V peak`
+> - Target ~3.0V at the ADC (safe margin below the 3.6V absolute max)
+> - Required ratio: `3.0 / 9.7 ≈ 0.309` → with R_bottom=10kΩ fixed,
+>   `R_top ≈ 22.4kΩ` → **use standard 22kΩ**
+> - Check: `9.7V × 10k/(22k+10k) ≈ 3.03V` at peak — good margin under max,
+>   still comfortably above the zero-cross threshold at the troughs
+>
+> **Swap the 27kΩ for 22kΩ, keep 10kΩ.** Then verify on the AD3 with the
+> rectifier connected: confirm the divided signal peaks near 3V and dips low
+> near each zero-crossing, same "measure before trusting" discipline as the
+> CT/74HC14 divider.
 
 ### Pin assignments (v2, direct traces — no JST)
 
@@ -505,8 +518,8 @@ graph LR
 | 1 | Relay module | Teyleten 1-Channel Opto 3V/3.3V Relay "High Level Driver" (Amazon B07XGZSYJV) | VCC/GND/IN/COM/NO pins. Confirmed active-HIGH, 3.3V logic native — matches firmware and Nucleo I/O directly. |
 | 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
 | 1 | Diode | 1N4007 | Rectifies TX secondary |
-| 1 | Resistor | 27kΩ 1/4W | Divider upper leg — **TBD, verify on AD3** |
-| 1 | Resistor | 10kΩ 1/4W | Divider lower leg — **TBD, verify on AD3** |
+| 1 | Resistor | 22kΩ 1/4W | Divider upper leg — recomputed from measured 7.3V AC TX output (was 27kΩ), still verify final on AD3 |
+| 1 | Resistor | 10kΩ 1/4W | Divider lower leg — unchanged |
 | 1 | Capacitor | 100nF ceramic | Filter on ADC input, NOT a smoothing cap |
 | 1 | Illuminated toggle switch | 250V/125V dual-rated, 15A/20A | Manual 110V master control, gates TX primary + relay COM branches — panel mount |
 
@@ -587,10 +600,9 @@ safety layer on top of the software startup/shutdown sequencing.
 - ✅ **VCC voltage RESOLVED** — use 5V (not 3.3V). User reviews confirm IN
   works from 3.3V directly, but the module runs more reliably with 5V on
   VCC for the coil driver. Board already has a 5V rail for this.
-- **Verify the 27kΩ/10kΩ AC-sense divider on the AD3** once the isolation TX
-  is wired — same "don't trust the carried-over value" caution as the CT
-  divider. Measure real TX secondary voltage, confirm ADC-safe range and
-  zero-cross threshold margin.
+- **Divider recomputed (22kΩ/10kΩ) from measured 7.3V AC TX output** — swap
+  the 27kΩ for 22kΩ, then verify on the AD3 with the rectifier connected:
+  confirm the divided signal peaks near 3V and dips low near zero-crossings.
 - Confirm the exact relay module part/model on hand, note its IN-pin
   logic level and whether it needs an external series resistor (many
   modules have this built in already).
