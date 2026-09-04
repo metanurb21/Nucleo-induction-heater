@@ -508,6 +508,7 @@ graph LR
 | 1 | Resistor | 27kΩ 1/4W | Divider upper leg — **TBD, verify on AD3** |
 | 1 | Resistor | 10kΩ 1/4W | Divider lower leg — **TBD, verify on AD3** |
 | 1 | Capacitor | 100nF ceramic | Filter on ADC input, NOT a smoothing cap |
+| 1 | Illuminated toggle switch | 250V/125V dual-rated, 15A/20A | Manual 110V master control, gates TX primary + relay COM branches — panel mount |
 
 ### Startup / shutdown sequence (unchanged logic, v2 wiring)
 
@@ -528,6 +529,42 @@ This logic is already implemented in `StateManager.cpp` / `MainsControl.cpp`
 from the firmware scaffold — no firmware changes needed, just the physical
 wiring described above.
 
+### Manual 110V master toggle (added — bench safety + sequencing)
+
+An illuminated toggle switch (250V/125V dual-rated, 15A/20A) sits at the
+very front of the 110V control circuit, gating BOTH branches below it:
+
+```
+110V AC ── [Illuminated toggle, 15/20A] ──┬── Isolation TX primary (AC sense, ~1-5W)
+                                            └── Relay module COM (→ NO → contactor COIL)
+
+240V AC (via Variac, 0V at startup)
+    → Contactor MAIN CONTACTS (50A, completely separate from the coil circuit above)
+    → Rectifier brick (100A) → IGBT H-bridge high side
+```
+
+**Why the switch rating is more than sufficient, permanently:** the
+contactor's coil-control circuit (110V) is structurally isolated from the
+240V/50A power rail by design — the variac and rectifier brick only ever
+touch the 240V side. The toggle only ever carries the TX's few watts and the
+contactor coil's small fixed current. This never changes regardless of how
+much power the induction heater eventually draws — the switch does not need
+upgrading before full-power runs.
+
+**Sequencing this enables (matches the intended bring-up procedure):**
+1. Power the Nucleo (USB/12V) with the toggle OFF — verify GPIOs, TFT,
+   encoder, sensing with zero HV present anywhere on the board.
+2. Flip the toggle ON — 110V now live to the TX (Nucleo can detect
+   `mainsPresent()`) and to the relay module's COM. Contactor's main
+   contacts stay open (no HV to IGBTs yet) since the relay hasn't fired.
+3. Button press → firmware energizes the relay → contactor closes → 240V
+   (still at 0V from the variac at this point) reaches the rectifier/IGBTs.
+4. Bring the variac up gradually, as always.
+
+This gives a visible, physically-switched way to kill all control power
+before touching anything, independent of firmware state — a genuine manual
+safety layer on top of the software startup/shutdown sequencing.
+
 ### Physical layout notes
 
 - Relay, optocoupler, flyback diode: same board, share the single ground
@@ -538,6 +575,9 @@ wiring described above.
   doesn't fit the footprint
 - Contactor coil wires: spade or screw terminals, not soldered joints (the
   contactor vibrates when energized)
+- The illuminated toggle switch can be panel/enclosure mounted (not on the
+  perf itself) — it's a manual front-panel control, wired in series ahead of
+  the TX primary and relay COM branches
 
 ### Still TODO on this section
 
