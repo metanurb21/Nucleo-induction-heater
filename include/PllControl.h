@@ -15,8 +15,20 @@
 
 namespace PllControl
 {
-    // Configure TIM2 input capture on PA0.
+    // Configure TIM2 input capture on PA0. Leaves the capture
+    // PAUSED (see startCapture()) — boot-safe, matches the
+    // contactor/PWM being off by default. This avoids a floating
+    // or self-oscillating feedback input (no real CT signal, e.g.
+    // coil not running) flooding the ISR during boot before the
+    // rest of setup() can finish.
     void init();
+
+    // Arm/disarm the TIM2 input capture. Call startCapture() only
+    // when frequency feedback is actually needed (e.g. StateManager
+    // startup, right before enabling PWM); call stopCapture() on
+    // shutdown. Safe to call repeatedly.
+    void startCapture();
+    void stopCapture();
 
     // Latest measured tank frequency (Hz). 0 = no signal / not locked.
     uint32_t getMeasuredFreqHz();
@@ -26,8 +38,35 @@ namespace PllControl
     // PLL_UPDATE_MS cadence. Only acts when 'active' is true.
     void update(bool active);
 
-    // True when measured frequency is within lock tolerance of target.
+    // True when the phase error is inside tolerance (closed loop only).
     bool isLocked();
+
+    // Phase of the tank-current zero-crossing within the drive cycle,
+    // as a percentage of the PWM period. -1 = no valid feedback.
+    //
+    // This is the resonance error signal. Sampled by reading TIM1->CNT
+    // inside the TIM2 capture ISR: TIM1 counts 0..ARR over exactly one
+    // PWM period, so its count at the instant of a zero-crossing is that
+    // crossing's phase. Includes a fixed ISR-latency offset, which is
+    // irrelevant because the target is calibrated against a known
+    // resonance rather than derived analytically.
+    float getPhasePct();
+
+    // Spread (max - min) of the per-edge phase over the last reporting
+    // interval, as % of period. -1 = no data.
+    //
+    // THIS IS THE KEY DIAGNOSTIC. A small spread means the current
+    // zero-crossings hold a fixed position in the drive cycle, so phase
+    // is a usable error signal. A spread approaching 100 means they are
+    // uniformly scattered — either the feedback edges are unclean, or
+    // the current is not at the drive frequency and the phase is sliding.
+    float getPhaseSpreadPct();
+
+    // Feedback edges per second. Compare against the commanded PWM
+    // frequency: they should match 1:1. Double means both zero-crossings
+    // are triggering; much higher means noise or Schmitt chatter; much
+    // lower means edges are being missed.
+    uint32_t getEdgeRateHz();
 
     // Detune offset (Hz) for power mode. + = above resonance.
     void setDetuneHz(int32_t hz);

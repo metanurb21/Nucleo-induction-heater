@@ -62,6 +62,15 @@ namespace Encoder
         // Button
         pinMode(PIN_ENC_BTN, INPUT_PULLUP);
         s_lastBtn = digitalRead(PIN_ENC_BTN);
+
+        // Seed the debounce timestamp so the very first legitimate
+        // press right after boot isn't silently rejected. Without
+        // this, s_lastBtnTime defaults to 0, and millis() also starts
+        // near 0 at boot — any press attempted within the first
+        // BTN_DEBOUNCE_MS of power-up would fail the debounce check
+        // (t - 0 < BTN_DEBOUNCE_MS) and be silently dropped, with no
+        // visible feedback that anything happened.
+        s_lastBtnTime = millis() - BTN_DEBOUNCE_MS - 1;
     }
 
     int32_t readDelta()

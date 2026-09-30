@@ -97,11 +97,14 @@ namespace PwmDrive
         GPIOB->MODER |=  (2u << (12 * 2));
         GPIOB->AFR[1] &= ~(0xFu << ((12 - 8) * 4));
         GPIOB->AFR[1] |=  (1u   << ((12 - 8) * 4));
-        // BKIN is active-LOW in our wiring; enable pull-up so a
-        // disconnected/floating input reads as "no fault" only when
-        // pulled high externally. We use BKP polarity below.
-        GPIOB->PUPDR &= ~(3u << (12 * 2));
-        GPIOB->PUPDR |=  (1u << (12 * 2));     // pull-up
+        // NO internal pull — OCP board v3 drives this line actively in
+        // both directions (PC817 emitter-follower pulls high for
+        // "healthy", its 1k emitter resistor pulls low for "fault" or
+        // "board dead"). An internal pull-up would fight the 1k and lift
+        // the fault level by ~80mV, and worse, would mask a disconnected
+        // cable as "healthy" — the exact fail-permissive behaviour v3
+        // was designed to eliminate.
+        GPIOB->PUPDR &= ~(3u << (12 * 2));     // no pull-up, no pull-down
 
         // ---- Timer base config ----
         TIM1->PSC = 0;                          // no prescale, full resolution
@@ -142,9 +145,15 @@ namespace PwmDrive
         // ---- Dead-time + break (BDTR) ----
         uint32_t bdtr = 0;
         bdtr |= deadNsToDtg(s_deadNs);          // DTG[7:0]
+#if BKIN_ENABLED
         bdtr |= TIM_BDTR_BKE;                   // break enable
         // BKP polarity: 0 = break active LOW. Our fault line is active LOW.
         bdtr &= ~TIM_BDTR_BKP;
+#else
+        // BKE left clear — TIM1 does not watch PB12 at all, so BIF can
+        // never be set and the OCP board cannot stop a run. See
+        // BKIN_ENABLED in config.h.
+#endif
         // AOE = 0: do NOT auto-recover after break (require manual clear).
         // OSSR/OSSI = 0: outputs disabled (Hi-Z via gate) when MOE=0.
         TIM1->BDTR = bdtr;
@@ -206,8 +215,28 @@ namespace PwmDrive
 
     bool breakTripped()
     {
+#if !BKIN_ENABLED
+        // Break input never enabled, so BIF can never be set. Return
+        // false explicitly rather than relying on the flag being clear.
+        return false;
+#endif
         // Break sets the BIF flag in SR and clears MOE (when AOE=0).
+        // NOTE: BIF is a LATCH. It stays set until clearBreak(), and it
+        // is set by any BKIN event whenever BKE=1 — including while
+        // MOE=0. So it must be cleared immediately before arming the
+        // outputs, not earlier in the startup sequence.
         return (TIM1->SR & TIM_SR_BIF) != 0;
+    }
+
+    bool faultLineHealthy()
+    {
+        // Live level of PB12, read straight from the input data register.
+        // IDR reflects the pin regardless of MODER (the pin is in AF mode
+        // for TIM1_BKIN), so this is a valid instantaneous read of the
+        // OCP board's state with no reconfiguration needed.
+        //   HIGH = opto LED lit = latch armed = OCP board alive and happy
+        //   LOW  = tripped, unpowered, or cable disconnected
+        return (GPIOB->IDR & (1u << 12)) != 0;
     }
 
     void clearBreak()

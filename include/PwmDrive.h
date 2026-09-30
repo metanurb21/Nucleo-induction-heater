@@ -44,9 +44,17 @@ namespace PwmDrive
     bool outputsEnabled();
 
     // True if the hardware break (BKIN) has tripped since last clear.
-    // The break latches MOE off; call clearBreak() to re-arm.
+    // BIF is a latch: it stays set until clearBreak(), and it is set by
+    // any BKIN event even while MOE=0. Clear it immediately before
+    // enabling outputs, never earlier in a startup sequence.
     bool breakTripped();
 
     // Re-arm after a break event (only call once fault condition is gone).
     void clearBreak();
+
+    // Live level of the PB12 fault line, read as a GPIO (independent of
+    // the latched BIF flag). True = OCP board armed and healthy.
+    // Use this to confirm the fault is actually gone before clearing BIF
+    // and arming the gates.
+    bool faultLineHealthy();
 }

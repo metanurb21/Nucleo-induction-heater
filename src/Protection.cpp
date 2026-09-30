@@ -35,8 +35,14 @@ namespace Protection
         }
 
         // 2. Software OCP — compare RAW (not smoothed) for fast trip.
+        //
+        //    Gated by SOFT_OCP_ENABLED (config.h), currently false: PA1
+        //    has no sensor wired, and OCP board v3 doesn't connect it.
+        //    Trip-testing a floating ADC input was producing false
+        //    OCP_SW faults on contactor close. We still refresh the
+        //    reading so the display/bar graph stays live.
         int raw = Sensing::updateOcp();
-        if (raw >= s_ocpThreshold)
+        if (SOFT_OCP_ENABLED && raw >= s_ocpThreshold)
         {
             return FAULT_OCP_SW;
         }

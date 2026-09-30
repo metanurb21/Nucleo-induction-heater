@@ -38,4 +38,11 @@ namespace Sensing
     int   readAcRaw();
     bool  mainsPresent();
     bool  nearZeroCross();
+
+    // readTankVoltsEstimate() REMOVED — the PC2 tank divider is gone as
+    // of OCP board v3. It was a 1.67MΩ source into an unbuffered ADC
+    // input, which corrupted adjacent channels (including the PA1 OCP
+    // read) via sample-cap charge sharing and caused the measured
+    // [loop] STALL. Use readBusRaw() (PA4) for a display level instead.
+    // See docs/OCP_BOARD_Final.md, "Section 2 — removed".
 }

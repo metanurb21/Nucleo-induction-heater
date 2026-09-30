@@ -14,6 +14,7 @@
 #include "PwmDrive.h"
 #include "PllControl.h"
 #include "Protection.h"
+#include "StateManager.h"
 #include "config.h"
 
 #include <SPI.h>
@@ -32,9 +33,27 @@ namespace Display
     static const uint16_t COL_ACCENT = ST77XX_CYAN;
     static const uint16_t COL_BAR_BG = 0x2104;
 
-    // Software SPI constructor: (CS, DC, MOSI, SCK, RST)
-    static Adafruit_ST7735 tft(PIN_TFT_CS, PIN_TFT_DC,
-                               PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_RST);
+    // HARDWARE SPI constructor: (CS, DC, RST) — uses SPI1.
+    //
+    // PIN_TFT_SCK (PA5) and PIN_TFT_MOSI (PA7) ARE the Nucleo's SPI1
+    // SCK and MOSI pins, so this needs no rewiring at all — the same
+    // physical wires are now driven by the SPI peripheral instead of
+    // being bit-banged.
+    //
+    // Why this changed: software SPI measured 548 ms per render (see the
+    // [timing] diagnostic), which dropped the main loop to ~1.8 Hz. That
+    // starved Protection::checkFast() — meant to run every 1 ms, it was
+    // running twice a second — and generated tens of thousands of fast
+    // GPIO edges every 250 ms, a plausible noise source in its own right.
+    // Hardware SPI should bring a render under ~25 ms.
+    //
+    // MISO (PA6) is unused; the ST7735 is write-only here.
+    //
+    // TO REVERT to software SPI, restore:
+    //   static Adafruit_ST7735 tft(PIN_TFT_CS, PIN_TFT_DC,
+    //                              PIN_TFT_MOSI, PIN_TFT_SCK, PIN_TFT_RST);
+    // and verify with: pio run -e tft_hello -t upload
+    static Adafruit_ST7735 tft(PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_RST);
 
     static SystemState s_lastState = (SystemState)255;
     static bool s_forceRedraw = true;
@@ -143,14 +162,24 @@ namespace Display
         tft.printf("OCP: %d   ", Protection::getOcpThreshold());
 
         // Mains status
-        tft.setCursor(4, 92);
+        tft.setCursor(4, 88);
         bool mains = Sensing::mainsPresent();
         tft.setTextColor(mains ? COL_GOOD : COL_DANGER, COL_BG);
         tft.print(mains ? "MAINS: OK   " : "MAINS: NONE ");
 
+        // DC bus level (raw ADC counts, PA4). Replaces the old "Tank:"
+        // field — the PC2 tank divider is removed as of OCP board v3.
+        // Your [loop] STALL diagnosis was right: 1.67MΩ into an
+        // unbuffered ADC input was the cause. PA4 is already wired and
+        // correctly referenced. Raw counts, not volts, until the bus
+        // divider ratio is measured and added to config.h.
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(4, 100);
+        tft.printf("Bus: %4d      ", Sensing::readBusRaw());
+
         // Encoder mode hint
         tft.setTextColor(COL_ACCENT, COL_BG);
-        tft.setCursor(4, 112);
+        tft.setCursor(4, 116);
         tft.printf("Adj: %-8s ", encModeName(encMode));
 
         // Version
@@ -161,7 +190,10 @@ namespace Display
 
     static void drawRunning(EncoderMode encMode)
     {
-        drawStatusBar(PllControl::isLocked() ? "RUNNING [LOCK]" : "RUNNING", COL_GOOD);
+        drawStatusBar(PLL_CLOSED_LOOP
+                        ? (PllControl::isLocked() ? "RUNNING [LOCK]" : "RUNNING")
+                        : "RUNNING [OPEN]",
+                      COL_GOOD);
 
         // Commanded frequency (big)
         tft.setTextSize(2);
@@ -187,21 +219,55 @@ namespace Display
         char tb[10]; dtostrf(t, 5, 1, tb);
         tft.printf("Temp:%s%cC ", tb, 247);
 
-        // Current (OCP ADC)
-        tft.setTextColor(COL_TEXT, COL_BG);
+        // PHASE — the resonance error signal, and the number to record
+        // during PLL characterisation. Replaces the old "I:" field and
+        // bar graph, which read PA1 and therefore showed only noise
+        // (no current sensor is fitted to that pin).
+        //
+        // Shown large because this is the reading being taken by hand at
+        // the bench, with no USB and no serial monitor attached.
+        float ph = PllControl::getPhasePct();
+        char pb[10];
+        if (ph < 0.0f) strcpy(pb, "--.-");
+        else           dtostrf(ph, 4, 1, pb);
+
+        tft.setTextColor(COL_DIM, COL_BG);
         tft.setCursor(4, 78);
-        tft.printf("I: %4d/%4d ",
-                   (int)Sensing::ocpSmoothed(), Protection::getOcpThreshold());
-        drawBar(4, 90, 120, 10, (int)Sensing::ocpSmoothed(), Protection::getOcpThreshold());
+        tft.print("Phase");
+
+        tft.setTextSize(2);
+        tft.setTextColor(ph < 0.0f ? COL_DANGER : COL_ACCENT, COL_BG);
+        tft.setCursor(4, 90);
+        tft.print(pb);
+        tft.setTextSize(1);
+        tft.setCursor(56, 96);
+        tft.print("%   ");
+
+        // Spread — the diagnostic that says whether the phase mean is
+        // meaningful. Small spread = fixed relationship = usable error
+        // signal. Approaching 100 = uniformly scattered = unusable.
+        float sp = PllControl::getPhaseSpreadPct();
+        char sb[10];
+        if (sp < 0.0f) strcpy(sb, "--");
+        else           dtostrf(sp, 3, 0, sb);
+        tft.setTextColor(sp < 0.0f   ? COL_DIM :
+                         sp < 10.0f  ? COL_GOOD :
+                         sp < 40.0f  ? COL_WARN : COL_DANGER, COL_BG);
+        tft.setCursor(76, 96);
+        tft.printf("sp%s  ", sb);
+
+        // Feedback edge rate. Should match the commanded frequency 1:1.
+        tft.setTextColor(COL_DIM, COL_BG);
+        tft.setCursor(4, 110);
+        tft.printf("Edg/s:%6lu ", (unsigned long)PllControl::getEdgeRateHz());
 
         // Detune indicator
-        tft.setTextColor(COL_DIM, COL_BG);
-        tft.setCursor(4, 108);
+        tft.setCursor(4, 122);
         tft.printf("Detune: %ld Hz    ", (long)PllControl::getDetuneHz());
 
         // Stop hint + encoder mode
         tft.setTextColor(COL_ACCENT, COL_BG);
-        tft.setCursor(4, 124);
+        tft.setCursor(4, 134);
         tft.printf("Adj: %-8s ", encModeName(encMode));
         tft.setTextColor(COL_DANGER, COL_BG);
         tft.setCursor(4, 148);
@@ -229,12 +295,20 @@ namespace Display
         switch (state)
         {
         case STATE_FAULT_OCP:
-            tft.print("OVERCURRENT");
+        {
+            Protection::FaultType which = StateManager::lastFastFault();
+            tft.print(which == Protection::FAULT_OCP_HW ? "OVERCURRENT (HW)" : "OVERCURRENT (SW)");
             tft.setCursor(4, 50);
             tft.printf("ADC: %d", Sensing::ocpRaw());
             tft.setCursor(4, 64);
             tft.printf("Threshold: %d", Protection::getOcpThreshold());
+            tft.setCursor(4, 78);
+            tft.setTextColor(COL_DIM, COL_BG);
+            tft.print(which == Protection::FAULT_OCP_HW
+                       ? "BKIN break (PB12)"
+                       : "PA1 current sense");
             break;
+        }
         case STATE_FAULT_TEMP:
             tft.print("OVER TEMPERATURE");
             tft.setCursor(4, 50);

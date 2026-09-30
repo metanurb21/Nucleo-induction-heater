@@ -19,6 +19,7 @@
 
 #include <Arduino.h>
 #include "SystemState.h"
+#include "Protection.h"
 #include "config.h"
 
 namespace StateManager
@@ -33,4 +34,10 @@ namespace StateManager
 
     // Current encoder adjustment mode.
     EncoderMode encoderMode();
+
+    // Which fast-fault layer tripped the most recent OCP shutdown
+    // (FAULT_OCP_HW = BKIN hardware break, FAULT_OCP_SW = PA1 ADC
+    // over threshold, FAULT_NONE if the last shutdown wasn't an OCP
+    // fault). Lets the display distinguish the two without serial.
+    Protection::FaultType lastFastFault();
 }

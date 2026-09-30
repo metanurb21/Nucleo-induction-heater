@@ -26,6 +26,7 @@ namespace Sensing
         pinMode(PIN_ADC_VBUS, INPUT);
         pinMode(PIN_ADC_NTC, INPUT);
         pinMode(PIN_ADC_AC, INPUT);
+        // PC2 no longer configured — tank divider removed (OCP board v3).
 
         analogReadResolution(12);   // 0..4095
 
@@ -115,4 +116,8 @@ namespace Sensing
     {
         return analogRead(PIN_ADC_AC) < ZEROCROSS_THRESHOLD;
     }
+
+    // ---- Tank voltage: REMOVED ----------------------------
+    // readTankVoltsEstimate() and the PC2 channel are gone as of OCP
+    // board rebuild. See Sensing.h and docs/OCP_BOARD_Final.md.
 }
