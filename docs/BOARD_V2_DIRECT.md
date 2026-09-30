@@ -220,6 +220,81 @@ its own components.
 - SCT2450KE — SiC power MOSFET, wrong threshold and wildly overkill. Not suitable.
 - TL494CN — PWM controller IC, not a level-shifter. Wrong tool for this job.
 
+## GDT Secondary → IGBT Gate Network (carried over from original Induction
+Heater build, PROVEN)
+
+**IGBT bricks: 2x SKM200GN12T4** (dual half-bridge modules, 1200V/200A each —
+two modules form the full bridge). Gate network is unchanged from the
+original design, which runs well on it — from `docs/IGBT-Gates.txt`
+(original ESP32 build docs, carried forward unchanged since day 1):
+
+> The gates of the IGBT modules are connected to the GDT secondaries via
+> parallel 5W resistors and 5W 1N5821 Schottky reverse diodes, to provide
+> enough delay to prevent the gates from being turned on too early and
+> prevent shoot-through on one side of the full bridge. Gate resistors
+> rated at 3.3Ω gave the best-looking square wave gate signal on the SKM
+> bricks (may need adjustment if it ends up smoothing the switching signal
+> too much).
+
+So: **3.3Ω 5W series gate resistor + 1N5821 5W Schottky diode (in parallel,
+reverse-biased) on each gate**, same as the original design. No
+re-engineering — this combination already has proven runtime hours on the
+original build and has never changed.
+
+**GDT secondary bring-up note (AD3, no IGBT connected yet):** probing an
+open-circuit secondary pair showed a large free-ringing waveform (measured
+~±28V, 81% overshoot, ~112kHz) — this is the LC tank of the winding's
+leakage inductance against its own capacitance with nothing to damp it, NOT
+a fault. A GDT secondary is designed to drive into a gate resistor + IGBT
+gate capacitance; with no load, there's nothing to clamp the ring. Confirmed
+signal is present with no damage ("got signal, no magic smoke"). For a more
+representative bench reading before the IGBTs are wired in, load the pair
+under test with a resistor near the real gate resistor value (3.3Ω) — this
+should collapse most of the open-circuit ringing.
+
+### Bring-up verification (AD3, IGBT gates loaded, no HV, PLL feedback closed)
+
+With the GDT secondaries wired through the real 3.3Ω/1N5821 gate network
+into the SKM200GN12T4 gates (Phase 4, low-voltage bench supply, no power
+stage HV), and after fixing an unrelated PA1/PA0 wiring swap (see Feedback
+path section below), both gate signals scoped clean and matched:
+
+| Measurement | CH1 | CH2 |
+|---|---|---|
+| Frequency | 80.079 kHz | 80.074 kHz |
+| Amplitude | 14.401 V | 14.224 V |
+| Maximum | 17.212 V | 18.045 V |
+| Minimum | -18.827 V | -17.061 V |
+| Peak2Peak | 36.039 V | 35.107 V |
+| Overshoot | 25.1% | 23.4% |
+| Rise/Fall time | 0.857µs / 0.623µs | 0.697µs / 0.784µs |
+
+Matching frequency on both channels confirms the PLL feedback loop closed
+correctly. Complementary-looking amplitude/rise-fall relationship between
+channels is consistent with correct full-bridge gate drive phasing.
+
+**⚠️ Gate voltage margin note:** SEMIKRON 1200V Trench IGBT4 modules in this
+family (SKM200GB12V and related SKiiP parts) spec **VGES (gate-emitter
+absolute max) at ±20V**. Not independently confirmed against the exact
+SKM200GN12T4 datasheet PDF (only cross-referenced from closely related
+parts in the same family/die) — worth a direct datasheet check if a hard
+copy is on hand. Measured excursions here (+17.2/+18.0V, -18.8/-17.1V)
+stay under that limit but with as little as ~1.2V margin on the negative
+side (CH1: -18.827V). This is the same GDT-secondary/3.3Ω/1N5821 topology
+that ran a full year with zero gate/driver losses on the original ESP32
+build, so this margin was likely already present and implicitly tolerated
+— not a new problem, but worth revisiting (e.g. GDT clamp/snubber tuning)
+if gate-related issues ever show up, especially once real bus voltage and
+higher di/dt are introduced.
+
+### BOM (this section)
+
+| Qty | Part | Value/Type | Notes |
+|-----|------|-----------|-------|
+| 2 | IGBT module | SKM200GN12T4 | Dual half-bridge, 1200V/200A, forms full bridge together. Carried over from original design, unchanged since day 1. |
+| 4 | Resistor | 3.3Ω, 5W | Series gate resistor, one per IGBT gate (4 gates total across 2 modules). Unchanged from proven original build. |
+| 4 | Diode | 1N5821 Schottky, 5W | Reverse-biased, parallel with each gate resistor — delays turn-on to prevent shoot-through. Unchanged from original build. |
+
 ## Feedback / Fault Path (Power stage → Nucleo)
 
 ```mermaid
@@ -234,9 +309,31 @@ graph RL
 > GPIO absolute max (~VDD+0.3V ≈ 3.6V). At 3.3V VCC, HC14 thresholds become
 > VIH≈2.3V / VIL≈1.0V — recheck the CT divider still crosses these cleanly.
 > **BKIN (PB12):** until the OCP comparator is built, add a pull-up to
-> **3.3V** (not 5V) so it idles safely HIGH (break inactive). When the
-> comparator is added, its output must also be 3.3V-logic (or clamped/divided)
-> before reaching PB12 — never feed it 5V directly.
+> **3.3V** (not 5V) so it idles safely HIGH (break inactive). Use a bare
+> resistor only (10kΩ) — no filter cap, or at most ~1nF if noise filtering
+> is ever needed. BKIN is a hardware break designed for ~6ns response; a
+> 100nF cap (10kΩ+100nF ≈ 1µs) would meaningfully defeat that speed once a
+> real OCP comparator is wired in. When the comparator is added, its output
+> must also be 3.3V-logic (or clamped/divided) before reaching PB12 — never
+> feed it 5V directly.
+>
+> **✅ RESOLVED — PA1/PA0 wiring swap (found during Phase 4 bring-up).**
+> The 74HC14 output (pin 1Y) was physically wired to **PA1** instead of
+> **PA0**, leaving PA0 (the real PLL feedback input, `TIM2_CH1`) floating.
+> Symptom: immediate `OCP_SW` fault on every start attempt — `Protection::
+> checkFast()` polls PA1 as the tank current sense input (`PIN_ADC_OCP`),
+> and a fast-toggling square wave landing there gets ADC-sampled essentially
+> at random within its cycle. Confirmed on the fault screen: ADC reading
+> 3556 (well above the OCP_THRESHOLD of 3000) despite no real overcurrent —
+> consistent with sampling a digital squarewave mid-high, not sensor noise
+> on a floating pin (the initial theory, since ruled out). Fixed by moving
+> the HC14 1Y lead to PA0; PA1 left disconnected until the real current
+> sense circuit is built. Firmware also gained a display-side fix (fault
+> screen now shows "OVERCURRENT (HW)" vs "OVERCURRENT (SW)" so the two
+> `checkFast()` fault sources can be told apart without a serial monitor —
+> useful since this board only has serial access in USB/dev-jumper mode,
+> not in full-power test mode). Post-fix: PLL feedback confirmed live,
+> 80.08kHz measured on both gate channels, see bring-up verification below.
 
 ## User Interface (unchanged from v1)
 
@@ -331,6 +428,197 @@ graph TD
 - Single ground — no star-point complexity needed for a one-board design,
   just a solid ground plane/bus
 
+## ✅ RESOLVED — boot hang with no coil running (PA0/HC14 self-oscillation)
+
+**Symptom:** after wiring up new 240V/60A lab power and the OCP-board rework,
+the board appeared "dead" — TFT stayed dark (later: white/blank), solid
+red LED. Initially suspected RF damage from a nearby VTTC test, or a
+disturbed TFT SPI wire from all the physical rework this session.
+
+**Diagnosis process:**
+1. Built a minimal `tft_hello` PlatformIO env (`-DTFT_HELLO_MODE`) touching
+   ONLY the TFT + backlight, nothing else — confirmed the display and its
+   6 SPI/control leads are fully healthy (green "Hello World!" rendered
+   correctly). Ruled out RF damage and TFT wiring as the cause.
+2. Added step-by-step `Serial.println()` tracing around each module's
+   `::init()` call in `main.cpp` — isolated the hang to `PllControl::init()`
+   specifically (not `Display::init()` as first suspected).
+3. Added finer-grained tracing inside `PllControl::init()` itself — isolated
+   the hang to immediately after `s_timer->resume()`, i.e. the moment TIM2
+   input capture on PA0 is actually armed.
+4. Confirmed by physically disconnecting the 74HC14 output from PA0 and
+   power-cycling — booted cleanly straight to the display idle screen.
+
+**Root cause:** with no coil running, the tank CT/burden feeding the
+74HC14 (frequency-feedback conditioner) has no real AC signal — its input
+sits near the Schmitt-trigger threshold with nothing to cleanly cross it,
+and the 74HC14 self-oscillates at a high, uncontrolled frequency. The
+instant `PllControl::init()` armed TIM2 capture on PA0, this flood of
+edges kept the capture ISR firing continuously, starving the rest of
+`setup()` (particularly `Display::init()`, which never got reached) —
+this looked exactly like a hang/dead board, but was neither RF damage nor
+a wiring fault.
+
+**Fix (in `PllControl.cpp`/`.h` and `StateManager.cpp`):**
+- `PllControl::init()` now configures TIM2 capture but leaves it **paused**
+  (no `resume()` call at init time) — boot-safe, matching the existing
+  pattern where the contactor and PWM outputs also default off at boot.
+- Added `PllControl::startCapture()` / `stopCapture()`. `StateManager::
+  startup()` now calls `startCapture()` right before enabling PWM (only
+  when frequency feedback is actually needed); `shutdown()` calls
+  `stopCapture()` to keep PA0 quiet again once stopped.
+- Result: the board now boots cleanly to the idle/display screen
+  regardless of whether the HC14/CT signal is present, and only arms
+  frequency capture during an actual run attempt.
+
+**New test env added for future display-layer bring-up:** `tft_hello`
+(`pio run -e tft_hello -t upload`) — bare-minimum TFT sanity check with
+step-by-step serial tracing (backlight → initR → fillScreen → text),
+useful any time display behavior is in question without wading through
+the rest of the project's modules.
+
+## Full H-Bridge and Tank Component Record
+
+Never previously documented in this file — captured here for the record.
+
+**H-Bridge:**
+- **2x IGBT modules** — **SKM200GN12T4 (1200V/200A continuous)**, sourced
+  from `docs/IGBT-Gates.txt`, confirmed matching (initial "300A" mention
+  was a verbal slip, corrected).
+- **Bus bars:** solid copper, 1/4" (DC bus interconnect)
+- **Snubbers:** 2x AVX MKP, 2.5µF, 1000V
+- **DC bus caps:** 4x RIFA, 2200µF, 500V DC, wired series-parallel
+
+**Tank circuit:**
+- **Tank cap:** 2.6µF, 950A, 700Vrms, 400kVAR, water-cooled style
+- **Output cap (IGBT output side):** 3.5µF, 120A, 1200V AC
+- **Work coil transformer/core:** 5x Ferrite Toroid Core 5000-1,
+  2.40" x 1.40" x 0.50" each
+- **Winding:** 12 turns Litz wire, ~3mm total wire thickness (strand
+  count not recorded — heavy-duty, multi-strand Litz)
+
+## ✅ MILESTONE — first real induction heating, full chain proven (manual drive mode)
+
+**Result:** end-to-end system proven working with real HV and real coil
+current for the first time on Board v2. Nucleo → PWM (TIM1, dead-time) →
+IRLB8721 level-shift → IXDN630MCI → GDT → SKM200GN12T4 gates → work coil
+→ real eddy-current heating in a copper test piece in the crucible.
+
+**How this was reached:** the OCP board's analog bench tests (signal
+generator injection, wire-loop-through-toroid injection) both produced
+zero response despite part replacement — see the troubleshooting history
+above. Rather than keep chasing a dead-quiet bench simulation, switched to
+getting a real running signal from the actual system instead (same
+philosophy as the original pre-DeCosta ESP32 build: fully manual tuning
+by instrument, no automated feedback). Added `MANUAL_DRIVE_MODE` (see
+`platformio.ini` / `main.cpp`) — a dedicated firmware build where the
+encoder directly sets PWM frequency (20kHz-100kHz range, 500Hz/step), no
+PLL feedback capture is ever armed (PA0 stays completely quiet — no risk
+of the HC14 self-oscillation issue recurring), and no OCP hardware is
+wired in. **The only automated protection active in this mode is the NTC
+over-temp check.** Contactor sequencing (mains check, bus charge) reuses
+the same safety-checked `MainsControl` path as normal firmware.
+
+**Config changes to support this (shared `config.h`, affects all
+firmware envs):** `PWM_FREQ_MIN_HZ` lowered from 50000 to **20000** (this
+coil's resonance is well below the old floor), `PWM_FREQ_START_HZ`
+lowered from 80000 to **60000** to better match this coil.
+
+**First test (go/no-go, LOW power):** ~30V AC variac input. Added a
+temporary visual resonance aid — green LED + 1N4007 + series resistor
+(started ~6.8-10kΩ, 5W, sized conservatively from this expected voltage
+range) across the direct Tank V+/V- coil tap (NOT the CT/burden — kept
+electrically separate from both sense paths feeding the OCP/PLL boards).
+**Result: LED lit brightly at 57kHz** — first real resonance indication
+on this coil, matches this build's expected range.
+
+**Second test (higher power):** DC bus brought up to **50V / 5A**.
+**Copper test piece in the crucible reached ~200°F very quickly** —
+confirmed real, working eddy-current heating. LED (visual aid only, not
+part of the protective circuit) failed open (no smoke, no melting) at
+this higher power/current level — expected, it was sized for the lower
+first-test voltage range; inconsequential since it was never a functional
+component. Consider a higher-value series resistor (e.g. 15kΩ+) if a
+visual aid is wanted again at this power level.
+
+**What this proves:** PWM generation, dead-time, gate drive, GDT, IGBT
+bridge, contactor sequencing, and manual frequency control are all
+confirmed working with real HV and real coil current. The OCP hardware
+path (see below) remains the one open item before this can run
+unsupervised or at higher power/duration — manual variac ramp + operator
+judgement + NTC over-temp are still the only protection layers in
+`MANUAL_DRIVE_MODE`.
+
+**Next planned step:** with the OCP board now physically wired in
+(CT/burden → "FB-TX in", coil taps → "Tank-in +/-"), but its output
+**intentionally left disconnected from PB12** for this round, run again
+and take real measurements directly off the OCP board (pin 6, and
+whatever's observable at the front-end/Q1 stage) with genuine current and
+voltage present — something the earlier dead-quiet bench tests couldn't
+provide. This should finally reveal whether the OCP board's front end
+responds to a real signal, independent of any risk to the Nucleo since
+it's not wired to PB12 yet.
+
+## ⚠️ OPEN — OCP circuit, blocking HV bring-up (paused, resume here)
+
+**Decision made:** rather than building a new OCP comparator from
+scratch, replicate the proven analog peak-detect + latch circuit from the
+original DeCosta board (ran reliably for over a year on the same CT/
+burden/winding hardware this build reuses). This was never meant to be a
+new design effort — it's a straight port. Reconstructed from the DeCosta
+board's schematic image (not yet independently traced/confirmed on the
+physical board):
+
+- **CT/burden/coupling:** 20T current transformer → 100Ω burden → 200Ω
+  series R → 330nF coupling cap (blocks DC offset) → 1N5819 back-to-back
+  clamp diodes (D2/D3) → 1N4739A (9.1V) series zener pair (D4/D5, likely
+  coarse threshold/protection ceiling).
+- **Comparator/threshold stage:** MPSA06 (Q1) + R12 (51k) + R16 (15k) +
+  R13/R1 (10k) + a 10-turn 20kΩ "Current Limit" pot — pot most likely sets
+  the fine trip threshold via Q1's bias, though this split (zener ceiling
+  vs. pot fine-tune) is inferred from layout, not confirmed by tracing.
+- **Latch:** MM74HCT74N dual flip-flop, clocked/set when Q1 conducts.
+  Latched output drives an "enable" net.
+- **Driver disable:** "enable" net feeds UCC27425 (dual gate driver)
+  directly — this is the hardware-speed kill, analogous to this build's
+  TIM1_BKIN.
+- (Unrelated to OCP, don't port: LM555 + 200kΩ pot near U8 is a
+  soft-start/frequency-ramp circuit on the DeCosta board, not part of the
+  protection path.)
+
+**Recommended port approach for Board v2:** replicate this analog stage
+(or reuse the physical DeCosta sub-circuit if separable) and feed its
+digital "trip" output straight into **PB12/BKIN** — plays to BKIN's actual
+hardware-speed strength instead of trying to re-derive an equivalent
+threshold in software via the ADC on PA1.
+
+**Trip-current calibration:** not yet known in real amps. The zener+
+transistor threshold stage is hard to back-calculate accurately from
+component values alone. If a past calibration note (pot position ↔
+measured coil current via clip-on ammeter) exists, that's worth more than
+recalculating from scratch — check for it before doing a fresh calibration
+pass once the stage is rebuilt.
+
+**Why this is paused, not solved:** the CT/burden/DeCosta OCP components
+were physically disconnected and partially salvaged for the Board v2
+build. Reassembling this is a real rebuild task (sourcing/re-placing
+components, re-wiring, re-verifying), not a quick reconnect — bigger scope
+than fits in the current bring-up session. **This is the hard blocker on
+connecting HV and testing the full bridge + work coil** — do not apply HV
+power until this OCP path (or an equivalent fast-trip protection) is back
+in place and verified. Neither PA1 (floating, no real sensor) nor PB12
+(bare 10kΩ pull-up placeholder) currently provide real overcurrent
+protection.
+
+**Context — everything else is on track:** PWM generation with dead-time
+(microcontroller signal gen goal #1) is done. PLL frequency feedback
+(goal #2) closed successfully today after fixing the PA1/PA0 wiring swap
+— 80.08kHz confirmed on both gate channels with the real IGBT gate load.
+OCP was never intended to be a new design effort; it's the one piece still
+using proven "borrowed" analog circuitry rather than the new STM32 signal
+path, and that borrowing is now blocked on a physical rebuild, not a
+design question.
+
 ## Still TODO on this design
 
 - **Firmware: flip TIM1 CCER polarity bits (`CC1P`/`CC1NP`) in `PwmDrive::init()`**
@@ -389,68 +677,38 @@ against a bench scope if available and results still don't make sense.
 
 ---
 
-## ⚠️ OPEN ISSUES — RESUME HERE
+## ✅ RESOLVED — formerly "OPEN ISSUES — RESUME HERE"
 
-Two unresolved threads from the AC-sense wiring session. Do NOT reconnect
-PC1 to the AC-sense divider, and treat the NTC reading with suspicion,
-until both are resolved.
+All three threads from the AC-sense wiring session are now closed. Left
+here for history; see current values in the divider/BOM sections below.
 
-### Issue 1 — AC-sense divider resistor value (in progress)
+### Issue 1 — AC-sense divider resistor value (RESOLVED)
 
-Resized twice (27k→22k→8.2k), see the divider note above for full history.
-**Next step:** swap in the 8.2kΩ resistor, re-verify on the AD3 that the
-divider midpoint peaks near 3.0V with the full circuit (TX+rectifier+
-divider+filter) connected. Do not reconnect to PC1 until confirmed.
+Resized three times total (27k→22k→8.2k→**4.7kΩ+10kΩ series (14.7kΩ) /
+10kΩ**), see the divider note in the AC sensing section below for full
+history and why each single-resistor hand-calc kept missing the real
+in-circuit peak (divider loading changes the TX secondary's effective
+output — not a fixed source). AD3-verified final result at the divider
+midpoint: **Maximum 3.0626V, Peak2Peak 3.0581V, overshoot 0.39%, 60.0Hz**
+— clean half-wave rectified signal, ~0.54V margin under the 3.6V abs max.
 
-### Issue 2 — PC1 overvoltage exposure (unresolved — safety relevant)
+### Issue 2 — PC1 overvoltage exposure (RESOLVED)
 
 PC1 was briefly connected to the AC-sense divider while it was still
-producing a 5.5V peak (before the mismatch was caught) — above the
-STM32F446RE's standard I/O absolute max (~3.6V). Could not conclusively
-verify from datasheet lookups whether PC1 specifically is a 5V-tolerant
-(FT) pin (some STM32F4 pins are FT, up to 4.0V abs max; not confirmed
-whether PC1 is one). Disconnected once discovered; not appearing to be
-outright dead, but NOT fully cleared either.
+producing a 5.5V peak (before the mismatch was caught), above the
+STM32F446RE's standard I/O absolute max (~3.6V). Multimeter
+continuity/leakage check on PC1 (Nucleo powered off, PC1-to-GND and
+PC1-to-3.3V vs. a known-good pin baseline) **checks out clean** — no
+damage found. PC1 reconnected to the corrected 4.7k+10k/10k divider;
+`Sensing::readAcRaw()` / "MAINS" display field to be watched during next
+bring-up to confirm it tracks zero-crossings sensibly, but the pin itself
+is cleared.
 
-**What was checked so far:** display, LEDs, encoder, general board
-function all seem OK by inspection. NTC (PC0, same ADC1 peripheral)
-is behaving anomalously (see Issue 3) but causation vs. coincidence with
-the PC1 event is NOT established.
+### Issue 3 — NTC reading anomaly (RESOLVED)
 
-**Still TODO to fully clear this:**
-- Multimeter continuity/leakage check on PC1 (Nucleo powered OFF): measure
-  resistance PC1-to-GND and PC1-to-3.3V, compare to a known-good pin as a
-  baseline if possible.
-- Once the divider is fixed at 8.2kΩ and AD3-verified safe (~3V peak),
-  reconnect PC1 and watch `Sensing::readAcRaw()` / the "MAINS" display field
-  over time — confirm it tracks the AC waveform's zero-crossings sensibly
-  rather than reading garbage or pegging at max.
-- Do not consider this resolved until both of the above look clean.
-
-### Issue 3 — NTC reading anomaly (unresolved, in-progress diagnostic)
-
-NTC clamped to a soldering iron handle read ~41-46°C over several minutes
-(handle independently measured at 30°C via IR thermometer — consistent,
-so NOT a sensor-to-object contact issue). **Unclamped in free air for a
-couple minutes, the reading is SLOWLY RISING instead of falling toward the
-~27.8°C room temp (82°F on the thermostat) — backwards from expected
-physics.** This is a real anomaly, not just thermal lag/smoothing.
-
-**Diagnostic in progress, next step when resuming:** measure DC voltage
-directly at the NTC divider midpoint (the node feeding PC0) with a
-multimeter, independent of the Nucleo/firmware. Calculated expected value
-at 27.8°C ambient (R_fixed=10k, R0=10k@25°C, Beta=3435): **≈1.56V**.
-
-- If multimeter reads close to ~1.56V → the analog NTC circuit itself is
-  fine; the fault would be downstream (ADC reading, firmware conversion,
-  or possibly the ADC1 peripheral affected by the PC1 overvoltage event
-  since PC0 and PC1 share ADC1 — this would tie Issues 2 and 3 together).
-- If multimeter reads notably different from ~1.56V → the analog circuit
-  itself has a fault (solder joint, wrong resistor, damaged NTC lead from
-  handling during this session) — unrelated to the PC1 incident.
-
-**This measurement was not yet taken when the session paused — it's the
-very next thing to do when resuming this thread.**
+Root cause was a wiring fault (NTC not wired properly), not a circuit or
+firmware issue. Fixed; NTC now reads and responds as expected in free air
+and under load.
 
 ---
 
@@ -528,16 +786,16 @@ graph LR
 graph LR
     AC["120V AC Mains"] --> TX["Isolation TX<br/>measured 7.3VAC out"]
     TX -->|"7.3VAC"| DIODE["Rectifier Diode<br/>(1N4007)"]
-    DIODE -->|"~9.7V peak,<br/>rectified half-sine"| DIV["Resistor Divider<br/>22kΩ / 10kΩ"]
-    DIV -->|"~0-3.0V"| FILT["100nF filter"]
+    DIODE -->|"~9.7V peak,<br/>rectified half-sine"| DIV["Resistor Divider<br/>4.7kΩ+10kΩ series / 10kΩ"]
+    DIV -->|"~0-3.06V, AD3-verified"| FILT["100nF filter"]
     FILT --> PC1["PC1 (ADC1_IN11)<br/>Nucleo, direct trace"]
 ```
 
 | Component | Wiring |
 |-----------|--------|
 | Isolation TX secondary | → 1N4007 anode (measured 7.3VAC unloaded, not the 12V nameplate) |
-| 1N4007 cathode | → divider node (22kΩ top leg) |
-| Divider: 22kΩ | Top leg, from rectifier cathode to divider midpoint |
+| 1N4007 cathode | → divider node (top leg) |
+| Divider: 4.7kΩ + 10kΩ (series, 14.7kΩ total) | Top leg, from rectifier cathode to divider midpoint |
 | Divider: 10kΩ | Bottom leg, from divider midpoint to GND |
 | Divider midpoint | → 100nF to GND (filter), → PC1 direct trace |
 
@@ -546,34 +804,37 @@ graph LR
 > zero-crossings. Only the small 100nF filter cap is present, sized to knock
 > down HF noise without flattening the 120Hz envelope.
 >
-> **DIVIDER — SECOND CORRECTION NEEDED, 22kΩ still too low a ratio.**
-> First pass used 27kΩ (from `MAINS_CONTROL.md`, too high a ratio → 5.4V
-> peak p-p seen at midpoint, exceeded target). Recalculated to 22kΩ using
-> the measured 7.3VAC TX output, but AD3 testing with the FULL circuit
-> (TX + rectifier + 22kΩ/10kΩ divider + 100nF filter) still measured
-> **Maximum 5.5V, Peak2Peak 5.41V** at the divider midpoint — higher than
-> the ~3.0V target, and confirmed independently via multimeter DC average
-> (2.392V, consistent with a half-wave-rectified 60Hz waveform peaking
-> near 5.5V). The hand-calculation from 7.3VAC did not match the measured
-> in-circuit peak — likely the TX output sags/rises differently once loaded
-> by the actual rectifier+divider vs. the open-circuit multimeter reading.
+> **DIVIDER — RESOLVED after three iterations, final value 4.7kΩ+10kΩ
+> series (14.7kΩ) / 10kΩ.** Full history, because the pattern here is worth
+> remembering for future divider work:
 >
-> **Resized directly from the AD3-confirmed real peak (5.5V) instead of
-> back-calculating from TX voltage:**
-> - Target ~3.0V at the ADC: `3.0 / 5.5 ≈ 0.545` ratio
-> - With R_bottom=10kΩ fixed: `R_top ≈ 8.2kΩ` (was 22kΩ, now 8.2kΩ)
-> - Check: `5.5V × 10k/(8.2k+10k) ≈ 3.02V` — good margin under 3.6V max
+> - **27kΩ** (from `MAINS_CONTROL.md`, v1 carryover) → too high a ratio,
+>   5.4V peak p-p at midpoint, exceeded target.
+> - **22kΩ** (recalculated from 7.3VAC TX open-circuit reading) → AD3-measured
+>   **Maximum 5.5V, Peak2Peak 5.41V** at the midpoint, confirmed independently
+>   via multimeter DC average (2.392V). Hand-calc from open-circuit TX voltage
+>   did not match the loaded in-circuit peak.
+> - **8.2kΩ** (resized from the 5.5V AD3-measured peak, target `3.0/5.5≈0.545`
+>   ratio) → **not tried as a single resistor**; moved straight to available
+>   E-series values instead (no 8.2kΩ on hand).
+> - **7.5kΩ** (closest available single value to 8.2kΩ) → AD3-measured
+>   **Maximum 4.0615V, Peak2Peak 4.0790V** — still over the 3.6V abs max.
+>   Confirmed the underlying issue: **each new R_top value changes how much
+>   the divider loads the TX/rectifier, which changes the source peak
+>   itself.** Lowering total resistance (17.5kΩ here vs. 32kΩ at 22kΩ/10kΩ)
+>   reduced the loading/sag on the TX, raising the effective peak feeding
+>   the divider (~7.1V effective vs. the earlier 5.5V figure) — hand-calcs
+>   carried over from a previous resistor's measured peak do NOT transfer to
+>   a new resistor value. Every new R_top needs its own AD3 capture.
+> - **4.7kΩ + 10kΩ in series (14.7kΩ total) / 10kΩ** (final) → AD3-verified:
+>   **Maximum 3.0626V, Peak2Peak 3.0581V, Overshoot 0.39%, Frequency 60.0Hz,
+>   Minimum 4.46mV, Amplitude 1.5232V.** Clean half-wave rectified signal,
+>   negligible overshoot, ~0.54V margin under the 3.6V abs max. **This is
+>   the final value — confirmed on AD3, safe to leave wired.**
 >
-> **⚠️ NOT YET RE-VERIFIED ON AD3 with the 8.2kΩ value in place.** Given two
-> rounds of the hand-calculated value not matching the measured in-circuit
-> result, do NOT trust 8.2kΩ as final without a fresh AD3 capture after
-> swapping the resistor. This is the next step when resuming.
->
-> **⚠️ SAFETY NOTE — PC1 exposure incident:** PC1 was connected to this
-> divider (5.5V peak) before the mismatch was caught, then disconnected.
-> Not yet 100% confirmed whether this caused any damage — see "PC1
-> overvoltage exposure" note below. Do NOT reconnect PC1 to this divider
-> until the 8.2kΩ swap is verified safe on the AD3 first.
+> **✅ PC1 reconnected** — see "PC1 overvoltage exposure" resolution above;
+> continuity/leakage check came back clean, no damage from the earlier
+> 5.5V/4.06V exposure. Divider is wired to PC1.
 
 ### Pin assignments (v2, direct traces — no JST)
 
@@ -592,7 +853,8 @@ graph LR
 | 1 | Relay module | Teyleten 1-Channel Opto 3V/3.3V Relay "High Level Driver" (Amazon B07XGZSYJV) | VCC/GND/IN/COM/NO pins. Confirmed active-HIGH, 3.3V logic native — matches firmware and Nucleo I/O directly. |
 | 1 | Isolation transformer | 120V:12V, 1-5W | Chassis or PCB mount for AC sense |
 | 1 | Diode | 1N4007 | Rectifies TX secondary |
-| 1 | Resistor | **8.2kΩ** 1/4W | Divider upper leg — 3rd value (27k→22k→8.2k), resized from AD3-measured real peak (5.5V), NOT YET RE-VERIFIED |
+| 1 | Resistor | **4.7kΩ** 1/4W | Divider upper leg, part 1 of 2 (in series with the 10kΩ below) — final value after 4 iterations (27k→22k→7.5k→4.7k+10k series), AD3-verified safe (3.06V peak) |
+| 1 | Resistor | **10kΩ** 1/4W | Divider upper leg, part 2 of 2 — in series with the 4.7kΩ above, total R_top = 14.7kΩ |
 | 1 | Resistor | 10kΩ 1/4W | Divider lower leg — unchanged throughout |
 | 1 | Capacitor | 100nF ceramic | Filter on ADC input, NOT a smoothing cap |
 | 1 | Illuminated toggle switch | 250V/125V dual-rated, 15A/20A | Manual 110V master control, gates TX primary + relay COM branches — panel mount |
@@ -674,9 +936,9 @@ safety layer on top of the software startup/shutdown sequencing.
 - ✅ **VCC voltage RESOLVED** — use 5V (not 3.3V). User reviews confirm IN
   works from 3.3V directly, but the module runs more reliably with 5V on
   VCC for the coil driver. Board already has a 5V rail for this.
-- **Divider recomputed (22kΩ/10kΩ) from measured 7.3V AC TX output** — swap
-  the 27kΩ for 22kΩ, then verify on the AD3 with the rectifier connected:
-  confirm the divided signal peaks near 3V and dips low near zero-crossings.
+- ✅ **Divider RESOLVED** — final value 4.7kΩ+10kΩ series (14.7kΩ) / 10kΩ,
+  AD3-verified at 3.06V peak with the full circuit connected (TX +
+  rectifier + divider + filter). PC1 reconnected.
 - Confirm the exact relay module part/model on hand, note its IN-pin
   logic level and whether it needs an external series resistor (many
   modules have this built in already).

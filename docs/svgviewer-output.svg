@@ -1,0 +1,66 @@
+<svg xmlns="http://w3.org" viewBox="0 0 70 70" width="70mm" height="70mm">
+  <!-- 90-degree arc segment centered at (35, 55) with a 30mm sweep radius -->
+  <path d="M 13.79,33.79 A 30,30 0 0,1 56.21,33.79" fill="none" stroke="#000000" stroke-width="0.5"/>
+
+  <!-- Clean, centralized unit text label below the arc vertex -->
+  <text x="35" y="35" font-family="Arial" font-size="4" font-weight="bold" text-anchor="middle" fill="#000000">KV</text>
+
+  <!-- ================= CLEAN EVEN DIVISIONS (4.5° PER KV) ================= -->
+  <!-- Total sweep from -45° (0 kV) to +45° (20 kV) -->
+
+  <!-- 0 kV Major Line (-45°) -->
+  <g transform="rotate(-45 35 55)">
+    <line x1="35" y1="25" x2="35" y2="22.5" stroke="#000000" stroke-width="0.5"/>
+  </g>
+  <!-- Positioned inside the curve, balanced at Y=37.5 -->
+  <text x="16.5" y="37.5" font-family="Arial" font-size="3" text-anchor="middle" font-weight="bold">0</text>
+  
+  <!-- Minor Ticks 1 to 4 kV (4.5° spacing) -->
+  <g transform="rotate(-40.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-36 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-31.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-27 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+
+  <!-- 5 kV Major Line (-22.5°) -->
+  <g transform="rotate(-22.5 35 55)">
+    <line x1="35" y1="25" x2="35" y2="22.5" stroke="#000000" stroke-width="0.5"/>
+    <text x="35" y="19.5" font-family="Arial" font-size="3" text-anchor="middle" font-weight="bold" transform="rotate(22.5 35 19.5)">5</text>
+  </g>
+
+  <!-- Minor Ticks 6 to 9 kV -->
+  <g transform="rotate(-18 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-13.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-9 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(-4.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+
+  <!-- 10 kV Center Major Line (0° - Pointing Straight Up) -->
+  <g transform="rotate(0 35 55)">
+    <line x1="35" y1="25" x2="35" y2="22.5" stroke="#000000" stroke-width="0.5"/>
+    <text x="35" y="19.5" font-family="Arial" font-size="3" text-anchor="middle" font-weight="bold">10</text>
+  </g>
+
+  <!-- Minor Ticks 11 to 14 kV -->
+  <g transform="rotate(4.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(9 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(13.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(18 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+
+  <!-- 15 kV Major Line (+22.5°) -->
+  <g transform="rotate(22.5 35 55)">
+    <line x1="35" y1="25" x2="35" y2="22.5" stroke="#000000" stroke-width="0.5"/>
+    <text x="35" y="19.5" font-family="Arial" font-size="3" text-anchor="middle" font-weight="bold" transform="rotate(-22.5 35 19.5)">15</text>
+  </g>
+
+  <!-- Minor Ticks 16 to 19 kV -->
+  <g transform="rotate(27 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(31.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(36 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+  <g transform="rotate(40.5 35 55)"><line x1="35" y1="25" x2="35" y2="23.5" stroke="#000000" stroke-width="0.25"/></g>
+
+  <!-- 20 kV Full Scale Major Line (+45°) -->
+  <g transform="rotate(45 35 55)">
+    <line x1="35" y1="25" x2="35" y2="22.5" stroke="#000000" stroke-width="0.5"/>
+  </g>
+  <!-- Positioned inside the curve, balanced at Y=37.5 -->
+  <text x="53.5" y="37.5" font-family="Arial" font-size="3" text-anchor="middle" font-weight="bold">20</text>
+</svg>
